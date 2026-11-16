@@ -20,6 +20,16 @@
 - [hongguo-1.0.0-1-windows-x64.zip](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-windows-x64.zip)
 Android 三个包签名相同，可互相覆盖升级；与小果影视官方版签名不同，**不能覆盖安装官方版**，需先卸载。Windows 便携版解压后运行 `hongguo.exe`，设置、记录、缓存和默认下载都在程序旁的 `userdata` 目录，升级时把旧 `userdata` 拷过去即可。
 
+## 播放取流说明（重要）
+
+红果在 2026-11 中旬把 App 取流接口迁到了 `api5-normal-sinfonlinea.fqnovel.com` 的 `multi_video_model/player/v1`，并换了整套 V5 签名；同时网页端 `/player/...` 改成受保护播放，`videoList` 恒为空。
+
+因此 **1.0.0 版内置的模块（1.0.1）必然报「红果 App 接口未返回有效数据；网页取流失败：该集未提供公开播放地址」**。1.0.1+2 起内置模块升到 **1.0.2**，改走新接口，实测可取到 5 个清晰度的真实 MP4 流。
+
+已经装了旧版的话不用重装：启动时会自动热更新到 1.0.2，也可以在 **设置 › 关于 › 红果源** 手动点一次。再不行就装 1.0.1+2 的新包。
+
+以后再遇到同类报错，优先去模块商店的同源仓库 [guoapp-modules/hongguo](https://github.com/guoapp-modules/hongguo) 看有没有新版本，比等应用更新快。
+
 ## 红果源自动更新
 
 站源是运行时加载的 JS 模块，**更新它不需要重新安装应用**：
