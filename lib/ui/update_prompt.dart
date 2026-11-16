@@ -5,37 +5,28 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_update.dart';
-import '../core_bridge.dart';
 import '../local_store.dart';
-import 'app_scope.dart';
 import 'widgets/focus_ring.dart';
 
 var _checked = false;
-const _manualCooldown = Duration(seconds: 30);
-DateTime? _lastManualCheck;
-AppUpdate? _lastManualUpdate;
 
 enum _UpdateChoice { mute, skip, dismiss, download }
 
+/// 启动时静默检查一次更新。失败不打扰用户，有新版本才弹窗。
 Future<void> runStartupChecks(BuildContext context, LocalStore store) async {
   if (_checked) return;
   _checked = true;
-  final repository = AppScope.of(context).repository;
+  if (!store.checkUpdates) return;
   final String current;
-  final AppUpdate update;
+  final AppUpdate? update;
   try {
     current = await currentAppVersion();
-    if (store.shareUsage) {
-      unawaited(repository.reportUsage(current).catchError((_) {}));
-    }
-    if (!store.checkUpdates) return;
-    final latest = await repository.checkUpdate(current);
-    if (latest == null) return;
-    update = latest;
+    update = await fetchLatestRelease(current);
   } catch (_) {
     return;
   }
-  if (update.version == store.ignoredUpdate || !context.mounted) return;
+  if (update == null || !context.mounted) return;
+  if (update.version == store.ignoredUpdate) return;
   final choice = await _askUpdate(context, current, update, manual: false);
   switch (choice) {
     case _UpdateChoice.mute:
@@ -49,28 +40,17 @@ Future<void> runStartupChecks(BuildContext context, LocalStore store) async {
   }
 }
 
+/// 设置里手动检查，结果用提示条反馈。
 Future<void> checkUpdateManually(BuildContext context) async {
-  final repository = AppScope.of(context).repository;
   final messenger = ScaffoldMessenger.of(context);
   final String current;
   final AppUpdate? update;
   try {
     current = await currentAppVersion();
-    final last = _lastManualCheck;
-    if (last != null && DateTime.now().difference(last) < _manualCooldown) {
-      update = _lastManualUpdate;
-    } else {
-      update = await repository.checkUpdate(current);
-      _lastManualCheck = DateTime.now();
-      _lastManualUpdate = update;
-    }
+    update = await fetchLatestRelease(current);
   } catch (failure) {
     messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          failure is AppFailure ? '检查更新失败：$failure' : '检查更新失败，请稍后再试',
-        ),
-      ),
+      SnackBar(content: Text('检查更新失败：$failure')),
     );
     return;
   }
@@ -96,13 +76,15 @@ Future<_UpdateChoice?> _askUpdate(
     builder: (dialogContext) => AlertDialog(
       title: Text('发现新版本 ${update.version}'),
       content: Text(
-        manual ? '当前版本 $current。' : '当前版本 $current。选「不再提醒」后可在设置 › 关于中重新打开检查更新。',
+        manual
+            ? '当前版本 $current。点「去下载」打开 GitHub 发布页，下载后覆盖安装即可，数据不会丢。'
+            : '当前版本 $current。点「去下载」打开 GitHub 发布页，下载后覆盖安装即可，数据不会丢。\n\n选「不再提醒」后可在 设置 › 关于 里重新打开启动检查。',
       ),
       actions: [
         for (final (choice, label) in [
           if (!manual) (_UpdateChoice.mute, '不再提醒'),
           if (!manual) (_UpdateChoice.skip, '忽略此版本'),
-          (_UpdateChoice.dismiss, '忽略'),
+          (_UpdateChoice.dismiss, '以后再说'),
         ])
           FocusRing(
             radius: 20,
@@ -117,7 +99,7 @@ Future<_UpdateChoice?> _askUpdate(
             autofocus: true,
             onPressed: () =>
                 Navigator.pop(dialogContext, _UpdateChoice.download),
-            child: const Text('更新'),
+            child: const Text('去下载'),
           ),
         ),
       ],

@@ -1,6 +1,6 @@
 # 红果影视（只播放红果）
 
-基于 [Xanerix/guoapp](https://github.com/Xanerix/guoapp)（小果影视，GPL-3.0）改造：**只保留红果一个站源**，去掉模块商店、站源切换、检查更新和匿名统计，红果源支持自动更新，Android 与 Windows 由 GitHub Actions 自动构建。
+基于 [Xanerix/guoapp](https://github.com/Xanerix/guoapp)（小果影视，GPL-3.0）改造：**只保留红果一个站源**，去掉模块商店、站源切换和匿名统计，应用内更新提示改为查 GitHub Release，红果源支持自动更新，Android 与 Windows 由 GitHub Actions 自动构建。
 
 ## 下载
 
@@ -50,7 +50,8 @@ Android 三个包签名相同，可互相覆盖升级；与小果影视官方版
 | 站源切换 | 发现页左上角地球按钮 | 单站源，按钮自动隐藏 |
 | 我的 › 模块 | 有 | 已移除 |
 | 红果源更新 | 随应用版本 | 启动自动检查 + 手动检查，热更新 |
-| 检查更新 / 匿名统计 | 有开关 | 已移除，不发任何请求 |
+| 检查更新 | 有开关，走自建更新服务器 | 改为查 GitHub Release：启动静默查一次 + 设置里手动查，弹窗直接给下载页 |
+| 匿名统计 | 有开关 | 已移除，不发任何请求 |
 | 应用名 / 包名 | 小果影视 · `com.guoapp.app` | 红果影视 · `com.hongguo.app` |
 | 图标 | 蓝色小果 | 红底白「果」 |
 
@@ -71,9 +72,10 @@ Android 三个包签名相同，可互相覆盖升级；与小果影视官方版
 - `lib/app_build.dart`：应用名「红果影视」。
 - `lib/ui/mine/mine_page.dart`、`lib/ui/explore/source_actions.dart`：删除「模块」「管理站源」入口。
 - `lib/ui/widgets/source_bar.dart`：新增 `showSwitcher`，单站源时隐藏地球按钮。
-- `lib/ui/settings/settings_sections.dart`：删除检查更新与统计开关，新增「红果源」检查项。
+- `lib/ui/settings/settings_sections.dart`：删除统计开关，新增「红果源」检查项、「检查更新」「启动时检查更新」开关。
 - `lib/main.dart`：启动后静默检查红果源更新。
 - `lib/ui/terms_page.dart`：条款改为单站源版本。
+- `lib/app_update.dart`、`lib/ui/update_prompt.dart`、`lib/ui/device_registration.dart`：应用内更新提示。启动 2 秒后静默读 `releases/latest` 的重定向拿到最新 tag（不占 GitHub 接口配额，失败再退回 API），比构建号决定是否弹窗；可「忽略此版本」「不再提醒」，设置里能手动检查。
 - `android/app/src/main/kotlin/com/guoapp/TextInputBridge.kt`、`lib/native_text_input.dart`、`lib/ui/widgets/search_field.dart`：电视端搜索输入法兼容。隐藏输入框改为布局完成后再弹键盘并自动重试，输入法浮窗抢焦点不再误关，搜索框右侧键盘图标可切换输入法；系统里没有输入法时自动退回内置字母键盘。
 
 内置站源：`modules_src/hongguo/`（`manifest.json` + `main.js`），构建时由 `scripts/build_native.py --bundle modules_src/hongguo` 复制进 `native/core/bundled/`，再由 `go:embed` 编进 `libduanju_core.so`。

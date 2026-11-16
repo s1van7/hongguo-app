@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core_bridge.dart';
@@ -27,9 +29,17 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
   @override
   void initState() {
     super.initState();
-    if (!_devicesReady) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _open());
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  Future<void> _start() async {
+    if (!mounted) return;
+    if (!_devicesReady) await _open();
+    if (!mounted) return;
+    // 让首页先出来，别跟首屏加载抢带宽
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    unawaited(runStartupChecks(context, widget.store));
   }
 
   Future<void> _open() async {
@@ -42,8 +52,6 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
     ];
     var ready = pending.isEmpty;
     if (!ready && mounted) {
-      await runStartupChecks(context, widget.store);
-      if (!mounted) return;
       ready =
           await showDialog<bool>(
             context: context,

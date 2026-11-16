@@ -504,6 +504,16 @@ class SettingsSection extends StatelessWidget {
             title: appName,
             value: version.isEmpty ? '版本未知' : '版本 $version',
           ),
+          const _UpdateCheckTile(),
+          SwitchTile(
+            title: '启动时检查更新',
+            subtitle: '每天首次打开时静默查一次，失败不打扰',
+            value: store.checkUpdates,
+            onChanged: (value) => saveSetting(
+              context,
+              () => store.setCheckUpdates(value),
+            ),
+          ),
           const _SourceUpdateTile(),
         ],
       ),
