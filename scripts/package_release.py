@@ -21,6 +21,7 @@ match = re.search(r'^version:\s*([\w.+-]+)\s*$', (root / 'pubspec.yaml').read_te
 if not match:
     raise SystemExit('pubspec.yaml 缺少合法版本号。')
 version = match.group(1)
+file_version = version.replace('+', '-')
 output = root / 'dist' / options.platform
 output.mkdir(parents=True, exist_ok=True)
 artifacts = []
@@ -145,7 +146,7 @@ def package_macos(application):
     plist_path.write_bytes(plistlib.dumps(info))
     sign_macos_application(staged, options.identity)
     verify_macos_application(staged)
-    target = output / f'{app.slug}-{version}-macos-universal.dmg'
+    target = output / f'{app.slug}-{file_version}-macos-universal.dmg'
     if target.exists():
         target.unlink()
     build_macos_dmg(display, staging, staged, target)
@@ -192,7 +193,7 @@ def find_inno_compiler():
 
 
 def package_windows_installer(bundle, bundle_executable):
-    base_name = f'{app.slug}-{version}-windows-x64-setup'
+    base_name = f'{app.slug}-{file_version}-windows-x64-setup'
     run([find_inno_compiler(), '/Q',
          f'/DAppId={app.bundle_identifier}',
          f'/DAppName={app.display_name}',
@@ -222,7 +223,7 @@ if options.platform == 'android':
             missing = set(required) - names
             if missing:
                 raise SystemExit('APK 缺少原生库：' + ', '.join(sorted(missing)))
-        target = output / f'{app.slug}-{version}-{abi}.apk'
+        target = output / f'{app.slug}-{file_version}-{abi}.apk'
         shutil.copy2(source, target)
         artifacts.append(target)
 elif options.platform == 'windows':
@@ -238,7 +239,7 @@ elif options.platform == 'windows':
     if built != app.bundle_identifier:
         raise SystemExit(f'构建产物是 {built or "未知版本"}，与要打包的 {app.bundle_identifier} 不符，'
                          '请先用 build_windows.py 以相同参数重新构建。')
-    target = output / f'{app.slug}-{version}-windows-x64.zip'
+    target = output / f'{app.slug}-{file_version}-windows-x64.zip'
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for source in sorted(bundle.rglob('*')):
             if source.is_file():

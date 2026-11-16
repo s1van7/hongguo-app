@@ -11,7 +11,14 @@
 | 模拟器 / x86 设备 | `hongguo-<版本>-x86_64.apk` |
 | Windows 10/11 x64 | `hongguo-<版本>-windows-x64-setup.exe`（安装包）或 `hongguo-<版本>-windows-x64.zip`（便携版） |
 
-安装包在 [Releases](../../releases)。Android 三个包签名相同，可互相覆盖升级；与小果影视官方版签名不同，**不能覆盖安装官方版**，需先卸载。Windows 便携版解压后运行 `hongguo.exe`，设置、记录、缓存和默认下载都在程序旁的 `userdata` 目录，升级时把旧 `userdata` 拷过去即可。
+安装包在 [Releases](https://github.com/s1van7/hongguo-app/releases/latest)，直接点文件名下载：
+
+- [hongguo-1.0.0-1-arm64-v8a.apk](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-arm64-v8a.apk)
+- [hongguo-1.0.0-1-armeabi-v7a.apk](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-armeabi-v7a.apk)
+- [hongguo-1.0.0-1-x86_64.apk](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-x86_64.apk)
+- [hongguo-1.0.0-1-windows-x64-setup.exe](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-windows-x64-setup.exe)
+- [hongguo-1.0.0-1-windows-x64.zip](https://github.com/s1van7/hongguo-app/releases/latest/download/hongguo-1.0.0-1-windows-x64.zip)
+Android 三个包签名相同，可互相覆盖升级；与小果影视官方版签名不同，**不能覆盖安装官方版**，需先卸载。Windows 便携版解压后运行 `hongguo.exe`，设置、记录、缓存和默认下载都在程序旁的 `userdata` 目录，升级时把旧 `userdata` 拷过去即可。
 
 ## 红果源自动更新
 
@@ -64,8 +71,9 @@
 
 `.github/workflows/build.yml`：
 
-- push 到 `main`：构建 Android 三个 APK + Windows 安装包，产物在 Actions 的 Artifacts 里。
-- 手动 Run workflow 或 push `v*` 标签：额外创建 Release，把全部产物挂上去。
+- push 到 `main`：自动构建 Android 三个 APK + Windows 安装包/便携版，成功后**直接发布到 Release**（标签 `v<版本号>`，同名标签会覆盖附件）。
+- 手动 Run workflow：同样流程，用于重跑。
+- 只改 `modules_src/hongguo/main.js` 时不必重新出包，客户端会热更新（记得提升 `manifest.json` 的 `version`）。
 
 签名默认用仓库内 `android/hongguo.jks`（密码 `hongguo2026`）。想换成自己的证书，在仓库 Settings › Secrets 里加 `ANDROID_KEYSTORE_BASE64`（keystore 的 base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，workflow 会优先用它们。
 
