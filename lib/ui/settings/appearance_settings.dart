@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../local_store.dart';
+import '../../native_text_input.dart';
 import '../../theme_color.dart';
 import '../app_scope.dart';
 import '../theme/motion.dart';
@@ -202,6 +204,9 @@ class AppearanceSettings extends StatelessWidget {
                   () => store.setTelevisionKeyboard(value),
                 ),
               ),
+            if (AppScope.of(context).television &&
+                defaultTargetPlatform == TargetPlatform.android)
+              const _ImeSettingsTile(),
           ],
         ),
         GroupCard(
@@ -301,4 +306,40 @@ class _Swatch extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 电视端用来查看当前输入法、并切换到第三方输入法。
+class _ImeSettingsTile extends StatefulWidget {
+  const _ImeSettingsTile();
+
+  @override
+  State<_ImeSettingsTile> createState() => _ImeSettingsTileState();
+}
+
+class _ImeSettingsTileState extends State<_ImeSettingsTile> {
+  var _info = const ImeInfo();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final info = await NativeTextInput.info();
+    if (mounted) setState(() => _info = info);
+  }
+
+  @override
+  Widget build(BuildContext context) => SettingsTile(
+    title: '输入法',
+    subtitle: _info.thirdParty
+        ? '当前：${_info.displayName}（还装了别的输入法，可切换）'
+        : '当前：${_info.displayName}，点按可切换',
+    onTap: () async {
+      await NativeTextInput.switchIme();
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await _load();
+    },
+  );
 }

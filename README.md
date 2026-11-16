@@ -74,6 +74,7 @@ Android 三个包签名相同，可互相覆盖升级；与小果影视官方版
 - `lib/ui/settings/settings_sections.dart`：删除检查更新与统计开关，新增「红果源」检查项。
 - `lib/main.dart`：启动后静默检查红果源更新。
 - `lib/ui/terms_page.dart`：条款改为单站源版本。
+- `android/app/src/main/kotlin/com/guoapp/TextInputBridge.kt`、`lib/native_text_input.dart`、`lib/ui/widgets/search_field.dart`：电视端搜索输入法兼容。隐藏输入框改为布局完成后再弹键盘并自动重试，输入法浮窗抢焦点不再误关，搜索框右侧键盘图标可切换输入法；系统里没有输入法时自动退回内置字母键盘。
 
 内置站源：`modules_src/hongguo/`（`manifest.json` + `main.js`），构建时由 `scripts/build_native.py --bundle modules_src/hongguo` 复制进 `native/core/bundled/`，再由 `go:embed` 编进 `libduanju_core.so`。
 
@@ -130,4 +131,5 @@ python scripts/build_windows.py
 - 红果站源模块（`modules_src/hongguo/`）来自小果影视官方安装包内置的模块，**不是公开仓库里的开源代码**，作者未单独开源；它只随本应用一起打包，请勿单独分发。
 - 应用不存储、不上传、不分发影视内容，内容全部来自红果短剧站点，版权归原权利人所有；不解除源站 VIP 限制。
 - 与红果短剧运营方无任何关联，仅供个人学习与技术研究，请勿公开传播安装包，试看内容请于下载后 24 小时内删除。
+- 电视端搜索默认用系统输入法。装了第三方输入法（搜狗、讯飞等）却没弹出，点搜索框右侧的键盘图标选「切换输入法」，或到 设置 › 外观 › 输入法 里切换；遥控器只按字母数字时也可以打开「搜索用字母键盘」。
 - 站源接口随时可能变化，出现「红果暂不可用」时通常是上游接口或签名参数改了，需要更新 `modules_src/hongguo/main.js` 并提升版本号。
