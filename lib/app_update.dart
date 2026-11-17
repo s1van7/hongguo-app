@@ -14,6 +14,7 @@ class AppUpdate {
 const releaseRepository = 's1van7/yingyu';
 
 const _latestPage = 'https://github.com/$releaseRepository/releases/latest';
+const _manifestUrl = 'https://yy.s1van.top:8448/dl/latest.json';
 const _latestApi = 'https://api.github.com/repos/$releaseRepository/releases/latest';
 
 /// 当前版本，形如 `1.0.2`。构建号只用于安装覆盖，不再对外展示。
@@ -61,9 +62,16 @@ Future<AppUpdate?> fetchLatestRelease(
   String current, {
   Duration timeout = const Duration(seconds: 8),
 }) async {
+  try {
+    final hosted = await _fromManifest(timeout);
+    if (hosted == null) return null;
+    return compareVersions(hosted.version, current) <= 0 ? null : hosted;
+  } on AppUpdateFailure {
+    // 自建更新服务不可用时退回 GitHub
+  }
   final tag = await _tagFromRedirect(timeout) ?? await _tagFromApi(timeout);
   if (tag == null) {
-    throw const AppUpdateFailure('无法连接 GitHub，请检查网络或代理');
+    throw const AppUpdateFailure('连不上更新服务，请检查网络');
   }
   final version = normalizeVersion(tag);
   if (version == null) {
@@ -74,6 +82,43 @@ Future<AppUpdate?> fetchLatestRelease(
     version: version,
     url: 'https://github.com/$releaseRepository/releases/tag/$tag',
   );
+}
+
+
+/// 读自建更新清单 `{"version":"1.0.3","url":"...apk"}`，国内可直连。
+/// 清单正常但没有新版本返回 null；连不上或格式不对抛 [AppUpdateFailure]。
+Future<AppUpdate?> _fromManifest(Duration timeout) async {
+  final client = HttpClient()..connectionTimeout = timeout;
+  try {
+    final request = await client
+        .getUrl(Uri.parse(_manifestUrl))
+        .timeout(timeout);
+    request.headers
+      ..set(HttpHeaders.userAgentHeader, 'yingyu-app')
+      ..set(HttpHeaders.cacheControlHeader, 'no-cache');
+    final response = await request.close().timeout(timeout);
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(timeout);
+    if (response.statusCode != 200) {
+      throw const AppUpdateFailure('更新服务返回异常');
+    }
+    final json = jsonDecode(body);
+    if (json is! Map) throw const AppUpdateFailure('更新清单格式不对');
+    final version = normalizeVersion('${json['version']}');
+    final url = json['url'];
+    if (version == null || url is! String || url.isEmpty) {
+      throw const AppUpdateFailure('更新清单缺少版本或下载地址');
+    }
+    return AppUpdate(version: version, url: url);
+  } on AppUpdateFailure {
+    rethrow;
+  } catch (_) {
+    throw const AppUpdateFailure('连不上更新服务');
+  } finally {
+    client.close(force: true);
+  }
 }
 
 Future<String?> _tagFromRedirect(Duration timeout) async {

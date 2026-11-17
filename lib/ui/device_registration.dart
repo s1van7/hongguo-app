@@ -40,6 +40,8 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
     // 让首页先出来，别跟首屏加载抢带宽
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
+    // 观看记录一落盘就排一次静默同步，4 秒内的多次写入合并成一次上传
+    widget.store.onWatchSaved = () => scheduleAutoSync(widget.store);
     unawaited(runStartupChecks(context, widget.store));
     unawaited(runStartupSync(context, widget.store));
   }

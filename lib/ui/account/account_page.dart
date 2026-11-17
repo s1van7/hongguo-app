@@ -87,11 +87,7 @@ class _AccountPageState extends State<AccountPage> {
       });
 
   Future<void> _sync(AccountStore account) => _run(() async {
-    final message = await syncNow(
-      context,
-      account: account,
-      store: widget.store,
-    );
+    final message = await syncNow(account: account, store: widget.store);
     _toast(message);
   });
 
@@ -164,8 +160,10 @@ class _AccountPageState extends State<AccountPage> {
                     '（server/README.md 有部署方法），填好地址就能注册账号、跨设备同步。')
               else if (!account.loggedIn)
                 _loginCard(account)
-              else
+              else ...[
                 _accountCard(account),
+                _policyCard(account),
+              ],
             ],
           ],
         ),
@@ -249,6 +247,43 @@ class _AccountPageState extends State<AccountPage> {
     _hint('密码只在设备上做 PBKDF2 拉伸，服务器存的是校验值，看不到原始密码。'),
   ]);
 
+  Widget _policyCard(AccountStore account) => _card([
+    Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Text('同步方式', style: Theme.of(context).textTheme.titleSmall),
+    ),
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: SegmentedButton<SyncPolicy>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: SyncPolicy.cloud,
+            label: Text('和云端一致'),
+            icon: Icon(Icons.cloud_download_outlined),
+          ),
+          ButtonSegment(
+            value: SyncPolicy.local,
+            label: Text('使用本机'),
+            icon: Icon(Icons.smartphone_outlined),
+          ),
+        ],
+        selected: {account.syncPolicy},
+        onSelectionChanged: _busy
+            ? null
+            : (selection) async {
+                await account.setSyncPolicy(selection.first);
+                if (mounted) setState(() {});
+              },
+      ),
+    ),
+    _hint(
+      account.syncPolicy == SyncPolicy.cloud
+          ? '本机与云端不一致时，自动下载云端数据覆盖本机，适合多台设备共用一份记录。'
+          : '本机与云端不一致时，自动上传本机数据覆盖云端，适合只信这台设备。',
+    ),
+  ]);
+
   Widget _accountCard(AccountStore account) {
     final synced = account.syncedAt;
     final syncedText = synced == null
@@ -262,8 +297,8 @@ class _AccountPageState extends State<AccountPage> {
       ),
       _button('立即同步', () => _sync(account), primary: true),
       SwitchListTile(
-        title: const Text('启动时自动比对云端'),
-        subtitle: const Text('云端有更新时弹窗询问，不会自动覆盖本机'),
+        title: const Text('自动同步'),
+        subtitle: const Text('每次观看后上传进度，启动时比对云端'),
         value: account.autoSync,
         onChanged: _busy ? null : (value) => account.setAutoSync(value),
       ),

@@ -71,6 +71,9 @@ class LocalStore extends ChangeNotifier {
   final SharedPreferences preferences;
   final LocalFiles files;
   final Future<String> Function(String pin, String salt) _pinHasher;
+
+  /// 观看记录落盘后的回调，用于触发云端自动同步。
+  void Function()? onWatchSaved;
   final Map<String, WatchEntry> _history = {};
   final Map<String, Drama> _favorites = {};
   final Map<String, FollowState> _followStates = {};
@@ -775,6 +778,7 @@ class LocalStore extends ChangeNotifier {
         }
       }
       if (changed) _notify();
+      onWatchSaved?.call();
     });
   }
 

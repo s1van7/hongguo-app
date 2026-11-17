@@ -6,6 +6,15 @@ import 'account_api.dart';
 /// 内置的同步服务器。用户可以在「账号与同步」里改成自建地址。
 const defaultSyncServer = 'https://yy.s1van.top:8448/yingyu';
 
+/// 本机与云端不一致时的处理方式。
+enum SyncPolicy {
+  /// 和云端一致：自动下载云端数据覆盖本机。
+  cloud,
+
+  /// 使用本机：自动上传本机数据覆盖云端。
+  local,
+}
+
 /// 账号会话与同步状态，落在 SharedPreferences 里。
 class AccountStore extends ChangeNotifier {
   AccountStore._(this._prefs)
@@ -14,7 +23,10 @@ class AccountStore extends ChangeNotifier {
       _username = _prefs.getString(_usernameKey) ?? '',
       _rev = _prefs.getInt(_revKey) ?? 0,
       _syncedAt = _prefs.getInt(_syncedAtKey) ?? 0,
-      _autoSync = _prefs.getBool(_autoSyncKey) ?? true;
+      _autoSync = _prefs.getBool(_autoSyncKey) ?? true,
+      _policy = _prefs.getString(_policyKey) == SyncPolicy.local.name
+          ? SyncPolicy.local
+          : SyncPolicy.cloud;
 
   static const _serverKey = 'account.server';
   static const _tokenKey = 'account.token';
@@ -22,6 +34,7 @@ class AccountStore extends ChangeNotifier {
   static const _revKey = 'account.rev';
   static const _syncedAtKey = 'account.syncedAt';
   static const _autoSyncKey = 'account.autoSync';
+  static const _policyKey = 'account.policy';
 
   final SharedPreferences _prefs;
 
@@ -31,6 +44,7 @@ class AccountStore extends ChangeNotifier {
   int _rev;
   int _syncedAt;
   bool _autoSync;
+  SyncPolicy _policy;
 
   static AccountStore open(SharedPreferences prefs) {
     final store = AccountStore._(prefs);
@@ -58,6 +72,7 @@ class AccountStore extends ChangeNotifier {
   String get username => _username;
   int get rev => _rev;
   bool get autoSync => _autoSync;
+  SyncPolicy get syncPolicy => _policy;
   bool get configured => _server.isNotEmpty;
   bool get loggedIn => _token.isNotEmpty && _server.isNotEmpty;
   DateTime? get syncedAt =>
@@ -75,6 +90,12 @@ class AccountStore extends ChangeNotifier {
     }
     _server = normalized;
     await _prefs.setString(_serverKey, normalized);
+    notifyListeners();
+  }
+
+  Future<void> setSyncPolicy(SyncPolicy value) async {
+    _policy = value;
+    await _prefs.setString(_policyKey, value.name);
     notifyListeners();
   }
 

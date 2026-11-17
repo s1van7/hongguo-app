@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../local_store.dart';
-import '../ui/widgets/focus_ring.dart';
 import 'account_api.dart';
 import 'account_store.dart';
 
@@ -52,9 +52,23 @@ Future<void> pullRemote(
   await account.markSynced(snapshot.rev);
 }
 
-/// 一次完整同步：云端没变就上传，云端更新就问用户要哪个方向。
-Future<String> syncNow(
-  BuildContext context, {
+/// 本机与云端版本不一致时，按用户选的策略决定方向。
+Future<String> _resolve(
+  AccountApi api,
+  AccountStore account,
+  LocalStore store,
+  AccountState state,
+) async {
+  if (account.syncPolicy == SyncPolicy.cloud) {
+    await pullRemote(api, account, store);
+    return '已下载云端数据';
+  }
+  await pushLocal(api, account, store, baseRev: state.rev);
+  return '已上传本机数据';
+}
+
+/// 一次完整同步：云端没变就上传，云端更新则按同步策略处理。
+Future<String> syncNow({
   required AccountStore account,
   required LocalStore store,
 }) async {
@@ -63,71 +77,42 @@ Future<String> syncNow(
     throw const AccountFailure('请先登录账号');
   }
   final state = await api.state(account.token);
-  if (state.rev == 0) {
-    await pushLocal(api, account, store, baseRev: 0);
-    return '已上传本机数据';
-  }
-  if (state.rev == account.rev) {
+  if (state.rev == 0 || state.rev == account.rev) {
     await pushLocal(api, account, store, baseRev: state.rev);
     return '已上传本机数据';
   }
-  if (!context.mounted) return '已取消';
-  final choice = await _askDirection(context, state);
-  if (choice == null) return '已取消';
-  if (choice == _Direction.download) {
-    await pullRemote(api, account, store);
-    return '已下载云端数据';
+  return _resolve(api, account, store, state);
+}
+
+Timer? _autoSyncTimer;
+
+/// 观看记录变化后延迟上传，把短时间内的多次写入合并成一次请求。
+void scheduleAutoSync(LocalStore store) {
+  _autoSyncTimer?.cancel();
+  _autoSyncTimer = Timer(const Duration(seconds: 4), () {
+    unawaited(_autoSync(store));
+  });
+}
+
+/// 静默同步：没变化就不动，冲突按策略处理，失败不打扰用户。
+Future<void> _autoSync(LocalStore store) async {
+  final account = await AccountStore.instance();
+  if (!account.loggedIn || !account.autoSync) return;
+  final api = account.api;
+  if (api == null) return;
+  try {
+    final state = await api.state(account.token);
+    if (state.rev == 0 || state.rev == account.rev) {
+      await pushLocal(api, account, store, baseRev: state.rev);
+    } else {
+      await _resolve(api, account, store, state);
+    }
+  } catch (_) {
+    // 网络断了或者刚好被别的设备抢先，下次观看再同步
   }
-  await pushLocal(api, account, store, baseRev: state.rev);
-  return '已上传本机数据';
 }
 
-enum _Direction { download, upload }
-
-Future<_Direction?> _askDirection(BuildContext context, AccountState state) {
-  final time = state.updatedAt == 0
-      ? '未知时间'
-      : DateTime.fromMillisecondsSinceEpoch(
-          state.updatedAt,
-        ).toString().substring(0, 16);
-  return showDialog<_Direction>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('云端有更新的数据'),
-      content: Text(
-        '云端在 $time 由 ${state.device.isEmpty ? '其他设备' : state.device} 上传过。\n'
-        '下载会用云端数据覆盖本机（本机的追剧、记录、设置会被替换）；'
-        '上传会用本机数据覆盖云端。',
-      ),
-      actions: [
-        FocusRing(
-          radius: 20,
-          child: TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-        ),
-        FocusRing(
-          radius: 20,
-          child: TextButton(
-            onPressed: () => Navigator.pop(dialogContext, _Direction.upload),
-            child: const Text('上传本机'),
-          ),
-        ),
-        FocusRing(
-          radius: 20,
-          child: FilledButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(dialogContext, _Direction.download),
-            child: const Text('下载云端'),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-/// 启动时静默比对云端，有新数据才提示。
+/// 启动时静默比对云端，按同步策略补齐差异。
 Future<void> runStartupSync(BuildContext context, LocalStore store) async {
   final account = await AccountStore.instance();
   if (!account.loggedIn || !account.autoSync) return;
@@ -139,19 +124,13 @@ Future<void> runStartupSync(BuildContext context, LocalStore store) async {
   } catch (_) {
     return;
   }
-  if (!context.mounted || state.rev <= account.rev) return;
-  final choice = await _askDirection(context, state);
-  if (choice == null || !context.mounted) return;
+  if (state.rev <= account.rev) return;
   try {
-    if (choice == _Direction.download) {
-      await pullRemote(api, account, store);
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已同步云端数据')));
-      }
-    } else {
-      await pushLocal(api, account, store, baseRev: state.rev);
+    final message = await _resolve(api, account, store, state);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   } catch (failure) {
     if (context.mounted) {
