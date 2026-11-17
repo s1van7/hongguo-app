@@ -3,10 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_api.dart';
 
+/// 内置的同步服务器。用户可以在「账号与同步」里改成自建地址。
+const defaultSyncServer = 'https://yingyu-sync.s1van70525.workers.dev';
+
 /// 账号会话与同步状态，落在 SharedPreferences 里。
 class AccountStore extends ChangeNotifier {
   AccountStore._(this._prefs)
-    : _server = _prefs.getString(_serverKey) ?? '',
+    : _server = _prefs.getString(_serverKey) ?? defaultSyncServer,
       _token = _prefs.getString(_tokenKey) ?? '',
       _username = _prefs.getString(_usernameKey) ?? '',
       _rev = _prefs.getInt(_revKey) ?? 0,

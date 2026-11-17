@@ -7,9 +7,8 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "yingyu"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "9f77e58c-d222-4327-be7c-d353940705be"
 
-# 密码校验用的 pepper，部署时用 `npx wrangler secret put PEPPER` 设置，
-# 或者在这里加一行 [vars] PEPPER = "随便一串长字符串"。改了 pepper 等于所有人要重新注册。
-[vars]
-PEPPER = "change-me-before-deploy"
+# 密码校验用的 pepper 走 secret，不要写进这个文件：
+#   npx wrangler secret put PEPPER
+# 改了 pepper 等于所有账号都要重新注册。

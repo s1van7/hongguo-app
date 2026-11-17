@@ -160,7 +160,7 @@ class _AccountPageState extends State<AccountPage> {
             else ...[
               _serverCard(account),
               if (!account.configured)
-                _hint('还没有配置同步服务器。按 server/README.md 部署一个 Cloudflare Worker，'
+                _hint('还没有配置同步服务器。默认用内置地址，也可以改成自建的 Cloudflare Worker，'
                     '把地址填在上面即可注册账号、跨设备同步。')
               else if (!account.loggedIn)
                 _loginCard(account)
@@ -230,7 +230,7 @@ class _AccountPageState extends State<AccountPage> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: Text('同步服务器', style: Theme.of(context).textTheme.titleSmall),
     ),
-    _field(_server, 'https://yingyu-sync.xxx.workers.dev', url: true),
+    _field(_server, defaultSyncServer, url: true),
     _button(
       account.configured ? '更新地址' : '保存地址',
       () => _saveServer(account),

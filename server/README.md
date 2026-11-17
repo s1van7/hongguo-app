@@ -2,7 +2,18 @@
 
 Cloudflare Worker + D1，免费额度足够个人用（每天 10 万次请求、5 GB 存储）。
 
-## 部署
+## 当前线上实例
+
+| 项 | 值 |
+| --- | --- |
+| 地址 | `https://yingyu-sync.s1van70525.workers.dev` |
+| Worker | `yingyu-sync` |
+| D1 数据库 | `yingyu`（APAC 区，`9f77e58c-d222-4327-be7c-d353940705be`） |
+| 客户端默认值 | `lib/account/account_store.dart` 里的 `defaultSyncServer` |
+
+应用默认就用这个地址，用户不用填。想换自建实例，改那个常量重新打包即可。
+
+## 自己部署一套
 
 ```bash
 cd server
@@ -14,8 +25,7 @@ npx wrangler deploy
 ```
 
 部署完会得到一个地址，形如 `https://yingyu-sync.<你的账号>.workers.dev`。
-把这个地址填进应用 **设置 › 账号 › 同步服务器**（或构建时用
-`--dart-define=SYNC_API=https://...` 写死），就能注册账号、跨设备同步了。
+把这个地址填进应用 **我的 › 账号与同步 › 同步服务器**，就能注册账号、跨设备同步了。
 
 ## 接口
 
