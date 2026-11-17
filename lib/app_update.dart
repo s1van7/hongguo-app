@@ -11,7 +11,7 @@ class AppUpdate {
 }
 
 /// 发布仓库。改仓库时这里和 `.github/workflows` 一起改。
-const releaseRepository = 's1van7/hongguo-app';
+const releaseRepository = 's1van7/yingyu';
 
 const _latestPage = 'https://github.com/$releaseRepository/releases/latest';
 const _latestApi = 'https://api.github.com/repos/$releaseRepository/releases/latest';

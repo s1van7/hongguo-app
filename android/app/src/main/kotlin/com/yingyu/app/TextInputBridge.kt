@@ -1,4 +1,4 @@
-package com.guoapp
+package com.yingyu.app
 
 import android.app.Activity
 import android.content.Context

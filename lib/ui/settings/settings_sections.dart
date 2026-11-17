@@ -55,8 +55,7 @@ const _decoders = {
 };
 const _links = [
   [
-    ('GitHub · 重建版', String.fromEnvironment('PROJECT_URL')),
-    ('GitHub · 原作者', 'https://github.com/fish2018'),
+    ('GitHub · 项目主页', String.fromEnvironment('PROJECT_URL')),
   ],
   [
     ('Telegram · 交流群组', String.fromEnvironment('TELEGRAM_GROUP_URL')),
