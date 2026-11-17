@@ -8,11 +8,11 @@ Cloudflare Worker + D1，免费额度足够个人用（每天 10 万次请求、
 
 | 项 | 值 |
 | --- | --- |
-| 地址 | `https://chat.s1van.top:8448/yingyu` |
+| 地址 | `https://yy.s1van.top:8448/yingyu` |
 | 运行时 | Node 24 + 内置 `node:sqlite`，systemd 服务 `yingyu-sync` |
 | 代码 | `/opt/yingyu-sync/server.js`，数据库 `/opt/yingyu-sync/data/yingyu.db` |
 | 配置 | `/etc/yingyu-sync.env`（`PEPPER` 等，权限 600） |
-| 反代 | nginx `chat.s1van.top:8448` 下的 `location /yingyu/` → `127.0.0.1:8790` |
+| 反代 | nginx `yy.s1van.top:8448` 下的 `location /yingyu/` → `127.0.0.1:8790` |
 
 运维命令：
 
@@ -23,7 +23,7 @@ journalctl -u yingyu-sync -n 50   # 看日志
 ```
 
 > 为什么不用 80/443：这台机器 443 被 xray 占着，且国内云服务器对未备案域名会在 80 端口直接返回 403，
-> 所以走已有的 `chat.s1van.top` 证书 + 8448 端口，省掉再申请证书的麻烦。
+> 所以用独立子域 `yy.s1van.top` + 8448 端口，证书走 Cloudflare DNS 验证签发。
 
 另有 Cloudflare Worker 版（`server/src/index.js`）作为备选，部署后是
 `https://yingyu-sync.<子域>.workers.dev`。国内访问 `workers.dev` 常被拦，所以默认没走它。

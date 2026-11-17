@@ -16,20 +16,18 @@ const releaseRepository = 's1van7/yingyu';
 const _latestPage = 'https://github.com/$releaseRepository/releases/latest';
 const _latestApi = 'https://api.github.com/repos/$releaseRepository/releases/latest';
 
-int baseBuildNumber(String buildNumber) =>
-    (int.tryParse(buildNumber) ?? 0) % 1000;
-
+/// 当前版本，形如 `1.0.2`。构建号只用于安装覆盖，不再对外展示。
 Future<String> currentAppVersion() async {
   final info = await PackageInfo.fromPlatform();
-  return '${info.version}+${baseBuildNumber(info.buildNumber)}';
+  return normalizeVersion(info.version) ?? info.version;
 }
 
-/// `v1.0.1-3` / `1.0.1+3` 都归一成 `1.0.1+3`；认不出就返回 null。
+/// `v1.0.2` / `1.0.2` / `1.0.2+102` / `v1.0.2-102` 都归一成 `1.0.2`；认不出就返回 null。
 String? normalizeVersion(String raw) {
   final tag = raw.trim().replaceFirst(RegExp('^[vV]'), '');
-  final match = RegExp(r'^(\d+\.\d+\.\d+)[-+](\d+)$').firstMatch(tag);
+  final match = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:[-+]\d+)?$').firstMatch(tag);
   if (match == null) return null;
-  return '${match.group(1)}+${match.group(2)}';
+  return '${match.group(1)}.${match.group(2)}.${match.group(3)}';
 }
 
 int _part(String version, int index) {
@@ -39,7 +37,7 @@ int _part(String version, int index) {
 
 int _build(String version) => int.tryParse(version.split('+').last) ?? 0;
 
-/// 版本号比较：先比 主.次.修订，再比构建号。大于返回正数。
+/// 版本号比较：先比 主.次.修订；构建号仅在两边都带时才作次级比较。大于返回正数。
 int compareVersions(String a, String b) {
   for (var i = 0; i < 3; i++) {
     final diff = _part(a, i) - _part(b, i);

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'account_api.dart';
 
 /// 内置的同步服务器。用户可以在「账号与同步」里改成自建地址。
-const defaultSyncServer = 'https://chat.s1van.top:8448/yingyu';
+const defaultSyncServer = 'https://yy.s1van.top:8448/yingyu';
 
 /// 账号会话与同步状态，落在 SharedPreferences 里。
 class AccountStore extends ChangeNotifier {
@@ -32,13 +32,26 @@ class AccountStore extends ChangeNotifier {
   int _syncedAt;
   bool _autoSync;
 
-  static AccountStore open(SharedPreferences prefs) => AccountStore._(prefs);
+  static AccountStore open(SharedPreferences prefs) {
+    final store = AccountStore._(prefs);
+    store._migrateLegacyServer();
+    return store;
+  }
 
   static AccountStore? _shared;
 
   /// 全局单例，页面之间共享登录状态。
   static Future<AccountStore> instance() async =>
-      _shared ??= AccountStore._(await SharedPreferences.getInstance());
+      _shared ??= open(await SharedPreferences.getInstance());
+
+  /// 1.0.2 起内置地址换成 yy.s1van.top，老版本存下的旧地址自动跟着迁。
+  void _migrateLegacyServer() {
+    const legacy = 'https://chat.s1van.top:8448/yingyu';
+    if (_server == legacy) {
+      _server = defaultSyncServer;
+      _prefs.setString(_serverKey, defaultSyncServer);
+    }
+  }
 
   String get server => _server;
   String get token => _token;
@@ -58,7 +71,7 @@ class AccountStore extends ChangeNotifier {
   Future<void> setServer(String value) async {
     final normalized = AccountApi.normalizeServer(value);
     if (normalized == null) {
-      throw const AccountFailure('服务器地址要形如 https://chat.s1van.top:8448/yingyu');
+      throw const AccountFailure('服务器地址要形如 https://yy.s1van.top:8448/yingyu');
     }
     _server = normalized;
     await _prefs.setString(_serverKey, normalized);
