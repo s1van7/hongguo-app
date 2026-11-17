@@ -8,7 +8,7 @@ import 'catalog_sort.dart';
 import 'diary_service.dart';
 import 'download_preferences.dart';
 import 'follow_state.dart';
-import 'hongguo_series.dart';
+import 'yingyu_series.dart';
 import 'local_files.dart';
 import 'local_profiles.dart';
 import 'local_snapshot.dart';
@@ -852,8 +852,8 @@ class LocalStore extends ChangeNotifier {
             notice.id,
             () => Drama(
               id: notice.id,
-              source: hongguoSourceId,
-              sourceId: notice.id.substring(hongguoSourceId.length + 1),
+              source: yingyuSourceId,
+              sourceId: notice.id.substring(yingyuSourceId.length + 1),
               title: notice.title,
             ),
           );
@@ -861,10 +861,10 @@ class LocalStore extends ChangeNotifier {
       }
       final favoriteIds = favorites.keys.toSet();
       for (final favorite in favorites.values) {
-        if (favorite.source != hongguoSourceId || states[favorite.id] == null) {
+        if (favorite.source != yingyuSourceId || states[favorite.id] == null) {
           continue;
         }
-        states[favorite.id] = observeHongguoSeriesSeasons(
+        states[favorite.id] = observeYingyuSeriesSeasons(
           anchor: favorite,
           state: states[favorite.id]!,
           candidates: candidates.values,

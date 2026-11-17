@@ -83,7 +83,7 @@ Future<String?> _tagFromRedirect(Duration timeout) async {
   try {
     final request = await client.getUrl(Uri.parse(_latestPage)).timeout(timeout);
     request.followRedirects = false;
-    request.headers.set(HttpHeaders.userAgentHeader, 'hongguo-app');
+    request.headers.set(HttpHeaders.userAgentHeader, 'yingyu-app');
     final response = await request.close().timeout(timeout);
     final location = response.headers.value(HttpHeaders.locationHeader);
     await response.drain<void>().catchError((_) {});
@@ -104,7 +104,7 @@ Future<String?> _tagFromApi(Duration timeout) async {
         .timeout(timeout);
     request.headers
       ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
-      ..set(HttpHeaders.userAgentHeader, 'hongguo-app');
+      ..set(HttpHeaders.userAgentHeader, 'yingyu-app');
     final response = await request.close().timeout(timeout);
     final body = await response
         .transform(utf8.decoder)

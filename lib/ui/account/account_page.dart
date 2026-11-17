@@ -151,7 +151,7 @@ class _AccountPageState extends State<AccountPage> {
         child: ListView(
           padding: const EdgeInsets.only(bottom: 32),
           children: [
-            const PageHeader(title: '账号与同步'),
+            PageHeader(title: '账号与同步', onBack: () => Navigator.of(context).maybePop()),
             if (account == null)
               const Padding(
                 padding: EdgeInsets.all(24),
@@ -160,8 +160,8 @@ class _AccountPageState extends State<AccountPage> {
             else ...[
               _serverCard(account),
               if (!account.configured)
-                _hint('还没有配置同步服务器。默认用内置地址，也可以改成自建的 Cloudflare Worker，'
-                    '把地址填在上面即可注册账号、跨设备同步。')
+                _hint('还没有配置同步服务器。默认用内置地址，也可以改成自建服务'
+                    '（server/README.md 有部署方法），填好地址就能注册账号、跨设备同步。')
               else if (!account.loggedIn)
                 _loginCard(account)
               else

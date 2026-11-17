@@ -10,9 +10,9 @@ from app_build import app
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--bundle', action='append', default=[],
-                    help='内置模块目录，可多次指定；不指定时默认内置 modules_src/hongguo')
+                    help='内置模块目录，可多次指定；不指定时默认内置 modules_src/yingyu')
 options = parser.parse_args()
-bundles = options.bundle or ['modules_src/hongguo']
+bundles = options.bundle or ['modules_src/yingyu']
 env = os.environ.copy()
 env.setdefault('GOPROXY', 'https://goproxy.cn,direct')
 env.setdefault('GOSUMDB', 'off')

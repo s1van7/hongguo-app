@@ -1,0 +1,15 @@
+[Unit]
+Description=Yingyu Sync Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/yingyu-sync
+EnvironmentFile=/etc/yingyu-sync.env
+ExecStart=/usr/bin/node /opt/yingyu-sync/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

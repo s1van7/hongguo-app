@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -204,6 +205,10 @@ class AccountApi {
       );
     } on AccountFailure {
       rethrow;
+    } on TimeoutException {
+      throw const AccountFailure('连接超时：服务器没有响应，检查网络或换个服务器地址');
+    } on HandshakeException {
+      throw const AccountFailure('服务器证书校验失败，检查地址是否正确');
     } on SocketException {
       throw const AccountFailure('连不上同步服务器，检查地址和网络');
     } on HttpException {

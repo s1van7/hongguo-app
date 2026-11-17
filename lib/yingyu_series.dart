@@ -2,14 +2,14 @@ import 'catalog_sort.dart';
 import 'follow_state.dart';
 import 'models.dart';
 
-const _hongguoSeriesLimit = 200;
+const _yingyuSeriesLimit = 200;
 
 final _seasonSuffix = RegExp(
   r'第\s*([0-9零〇一二两兩三四五六七八九十百]+)\s*([季部])[\s\u3000，。！？、：；·「」『』（）【】《》“”‘’.,!?:;\-_/()\[\]{}]*$',
 );
 
-class HongguoSeriesInfo {
-  const HongguoSeriesInfo({
+class YingyuSeriesInfo {
+  const YingyuSeriesInfo({
     required this.baseTitle,
     required this.key,
     required this.season,
@@ -24,8 +24,8 @@ class HongguoSeriesInfo {
   final bool explicit;
 }
 
-class HongguoSeriesEntry {
-  const HongguoSeriesEntry({
+class YingyuSeriesEntry {
+  const YingyuSeriesEntry({
     required this.drama,
     required this.season,
     required this.unit,
@@ -41,7 +41,7 @@ class HongguoSeriesEntry {
 int? _seasonNumber(String label) {
   final numeric = int.tryParse(label);
   if (numeric != null) {
-    return numeric >= 1 && numeric <= _hongguoSeriesLimit ? numeric : null;
+    return numeric >= 1 && numeric <= _yingyuSeriesLimit ? numeric : null;
   }
   const digits = {
     '零': 0,
@@ -64,7 +64,7 @@ int? _seasonNumber(String label) {
       final digit = digits[String.fromCharCode(rune)];
       if (digit == null) return null;
       number = number * 10 + digit;
-      if (number > _hongguoSeriesLimit) return null;
+      if (number > _yingyuSeriesLimit) return null;
     }
     return number >= 1 ? number : null;
   }
@@ -84,16 +84,16 @@ int? _seasonNumber(String label) {
     previous = multiplier;
   }
   number += digit;
-  return number >= 1 && number <= _hongguoSeriesLimit ? number : null;
+  return number >= 1 && number <= _yingyuSeriesLimit ? number : null;
 }
 
-HongguoSeriesInfo? hongguoSeriesInfo(Drama drama, {String? unit}) {
-  if (drama.source != hongguoSourceId) return null;
+YingyuSeriesInfo? yingyuSeriesInfo(Drama drama, {String? unit}) {
+  if (drama.source != yingyuSourceId) return null;
   final title = drama.title.trim();
   final match = _seasonSuffix.firstMatch(title);
   if (match == null) {
     if (unit == null || title.isEmpty) return null;
-    return HongguoSeriesInfo(
+    return YingyuSeriesInfo(
       baseTitle: title,
       key: normalizedSearchText(title),
       season: 1,
@@ -104,7 +104,7 @@ HongguoSeriesInfo? hongguoSeriesInfo(Drama drama, {String? unit}) {
   final base = title.substring(0, match.start).trim();
   final season = _seasonNumber(match[1]!);
   if (base.isEmpty || season == null) return null;
-  return HongguoSeriesInfo(
+  return YingyuSeriesInfo(
     baseTitle: base,
     key: normalizedSearchText(base),
     season: season,
@@ -113,19 +113,19 @@ HongguoSeriesInfo? hongguoSeriesInfo(Drama drama, {String? unit}) {
   );
 }
 
-List<HongguoSeriesEntry> hongguoSeriesEntries(
+List<YingyuSeriesEntry> yingyuSeriesEntries(
   Drama anchor,
   Iterable<Drama> candidates,
 ) {
-  if (anchor.source != hongguoSourceId) return const [];
-  var anchorInfo = hongguoSeriesInfo(anchor);
+  if (anchor.source != yingyuSourceId) return const [];
+  var anchorInfo = yingyuSeriesInfo(anchor);
   String key, unit;
   int anchorSeason;
   if (anchorInfo == null) {
     final baseKey = normalizedSearchText(anchor.title);
-    final groups = <String, List<HongguoSeriesInfo>>{};
+    final groups = <String, List<YingyuSeriesInfo>>{};
     for (final drama in candidates) {
-      final info = hongguoSeriesInfo(drama);
+      final info = yingyuSeriesInfo(drama);
       if (info != null && info.key == baseKey) {
         (groups[info.unit] ??= []).add(info);
       }
@@ -148,19 +148,19 @@ List<HongguoSeriesEntry> hongguoSeriesEntries(
     key = baseKey;
     unit = best.first.key;
     anchorSeason = 1;
-    anchorInfo = hongguoSeriesInfo(anchor, unit: unit);
+    anchorInfo = yingyuSeriesInfo(anchor, unit: unit);
   } else {
     key = anchorInfo.key;
     unit = anchorInfo.unit;
     anchorSeason = anchorInfo.season;
   }
   if (anchorInfo == null) return const [];
-  final byId = <String, HongguoSeriesEntry>{};
+  final byId = <String, YingyuSeriesEntry>{};
   for (final drama in [anchor, ...candidates]) {
-    if (drama.source != hongguoSourceId) continue;
-    final info = hongguoSeriesInfo(drama, unit: unit);
+    if (drama.source != yingyuSourceId) continue;
+    final info = yingyuSeriesInfo(drama, unit: unit);
     if (info == null || info.key != key || info.unit != unit) continue;
-    byId[drama.id] = HongguoSeriesEntry(
+    byId[drama.id] = YingyuSeriesEntry(
       drama: drama,
       season: drama.id == anchor.id ? anchorSeason : info.season,
       unit: unit,
@@ -176,13 +176,13 @@ List<HongguoSeriesEntry> hongguoSeriesEntries(
   return entries.length > 1 ? entries : const [];
 }
 
-FollowState observeHongguoSeriesSeasons({
+FollowState observeYingyuSeriesSeasons({
   required Drama anchor,
   required FollowState state,
   required Iterable<Drama> candidates,
   required Set<String> favoriteIds,
 }) {
-  final entries = hongguoSeriesEntries(anchor, candidates);
+  final entries = yingyuSeriesEntries(anchor, candidates);
   if (entries.isEmpty) return state;
   final anchorSeason = entries
       .where((entry) => entry.drama.id == anchor.id)

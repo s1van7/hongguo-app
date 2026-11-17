@@ -4,16 +4,49 @@ Cloudflare Worker + D1，免费额度足够个人用（每天 10 万次请求、
 
 ## 当前线上实例
 
+应用默认连的是**自建 VPS 版**（国内直连，比 Cloudflare 稳）：
+
 | 项 | 值 |
 | --- | --- |
-| 地址 | `https://yingyu-sync.s1van70525.workers.dev` |
-| Worker | `yingyu-sync` |
-| D1 数据库 | `yingyu`（APAC 区，`9f77e58c-d222-4327-be7c-d353940705be`） |
-| 客户端默认值 | `lib/account/account_store.dart` 里的 `defaultSyncServer` |
+| 地址 | `https://chat.s1van.top:8448/yingyu` |
+| 运行时 | Node 24 + 内置 `node:sqlite`，systemd 服务 `yingyu-sync` |
+| 代码 | `/opt/yingyu-sync/server.js`，数据库 `/opt/yingyu-sync/data/yingyu.db` |
+| 配置 | `/etc/yingyu-sync.env`（`PEPPER` 等，权限 600） |
+| 反代 | nginx `chat.s1van.top:8448` 下的 `location /yingyu/` → `127.0.0.1:8790` |
 
-应用默认就用这个地址，用户不用填。想换自建实例，改那个常量重新打包即可。
+运维命令：
 
-## 自己部署一套
+```bash
+systemctl status yingyu-sync      # 看状态
+systemctl restart yingyu-sync     # 重启
+journalctl -u yingyu-sync -n 50   # 看日志
+```
+
+> 为什么不用 80/443：这台机器 443 被 xray 占着，且国内云服务器对未备案域名会在 80 端口直接返回 403，
+> 所以走已有的 `chat.s1van.top` 证书 + 8448 端口，省掉再申请证书的麻烦。
+
+另有 Cloudflare Worker 版（`server/src/index.js`）作为备选，部署后是
+`https://yingyu-sync.<子域>.workers.dev`。国内访问 `workers.dev` 常被拦，所以默认没走它。
+
+客户端默认值在 `lib/account/account_store.dart` 的 `defaultSyncServer`，用户也可以在应用里改。
+
+## 自己部署一套（VPS / Node）
+
+```bash
+# 1. 拷代码
+mkdir -p /opt/yingyu-sync && cp node/server.js /opt/yingyu-sync/
+
+# 2. 配密钥
+echo "PEPPER=$(openssl rand -hex 32)" > /etc/yingyu-sync.env && chmod 600 /etc/yingyu-sync.env
+
+# 3. systemd（见本目录 node/yingyu-sync.service）
+cp node/yingyu-sync.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now yingyu-sync
+
+# 4. nginx 反代（记得配 TLS）
+#    location /yingyu/ { proxy_pass http://127.0.0.1:8790/; }
+```
+
+## 自己部署一套（Cloudflare Worker）
 
 ```bash
 cd server

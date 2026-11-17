@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-const hongguoSourceId = 'hongguo';
+/// 站源标识。沿用历史值，改掉等于丢掉所有观看记录和追剧，界面上看不到它。
+const yingyuSourceId = 'hongguo';
 
 bool validSourceId(String id) => RegExp(r'^[a-z0-9_-]{1,64}$').hasMatch(id);
 

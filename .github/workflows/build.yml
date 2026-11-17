@@ -22,7 +22,7 @@ env:
   GOPROXY: https://proxy.golang.org,direct
   GOSUMDB: sum.golang.org
   # 红果源自动更新地址：优先 raw（更新最及时），失败再回退 jsDelivr
-  ONLY_SOURCE_UPDATE_BASE: https://raw.githubusercontent.com/${{ github.repository }}/main/modules_src/hongguo,https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/modules_src/hongguo
+  ONLY_SOURCE_UPDATE_BASE: https://raw.githubusercontent.com/${{ github.repository }}/main/modules_src/yingyu,https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/modules_src/yingyu
 
 jobs:
   version:
@@ -100,12 +100,12 @@ jobs:
             } > android/key.properties
             echo "使用仓库 Secrets 中的签名证书。"
           else
-            printf 'storeFile=hongguo.jks\nstorePassword=hongguo2026\nkeyAlias=hongguo\nkeyPassword=hongguo2026\n' > android/key.properties
+            printf 'storeFile=yingyu.jks\nstorePassword=hongguo2026\nkeyAlias=hongguo\nkeyPassword=hongguo2026\n' > android/key.properties
             echo "未配置 Secrets，使用仓库内自带的签名证书。"
           fi
 
       - name: 编译 Go 核心（内置站源）
-        run: python3 scripts/build_native.py --platform android --abi arm64-v8a --abi armeabi-v7a --abi x86_64 --bundle modules_src/hongguo
+        run: python3 scripts/build_native.py --platform android --abi arm64-v8a --abi armeabi-v7a --abi x86_64 --bundle modules_src/yingyu
 
       - run: flutter pub get --enforce-lockfile
 
@@ -207,7 +207,7 @@ jobs:
           - *-windows-x64-setup.exe：安装包，默认装到当前用户，无需管理员权限
           - *-windows-x64.zip：便携版，解压后运行 yingyu.exe，数据保存在程序旁的 userdata 目录
 
-          站源会在启动时自动检查更新（从本仓库 modules_src/hongguo 拉取），也可以在 设置 › 关于 手动检查。
+          站源会在启动时自动检查更新（从本仓库 modules_src/yingyu 拉取），也可以在 设置 › 关于 手动检查。
           EOF
           if gh release view "$tag" > /dev/null 2>&1; then
             gh release upload "$tag" release/* --clobber
