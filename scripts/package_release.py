@@ -21,7 +21,8 @@ match = re.search(r'^version:\s*([\w.+-]+)\s*$', (root / 'pubspec.yaml').read_te
 if not match:
     raise SystemExit('pubspec.yaml 缺少合法版本号。')
 version = match.group(1)
-file_version = version.replace('+', '-')
+# 对外只展示 1.0.x，构建号（+102）仅用于安装覆盖，不进文件名和安装包元信息。
+file_version = version.split('+')[0]
 output = root / 'dist' / options.platform
 output.mkdir(parents=True, exist_ok=True)
 artifacts = []
@@ -197,7 +198,7 @@ def package_windows_installer(bundle, bundle_executable):
     run([find_inno_compiler(), '/Q',
          f'/DAppId={app.bundle_identifier}',
          f'/DAppName={app.display_name}',
-         f'/DAppVersion={version}',
+         f'/DAppVersion={file_version}',
          f'/DNumericVersion={version.replace("+", ".")}',
          f'/DSlug={app.slug}',
          f'/DBundleExecutable={bundle_executable}',
