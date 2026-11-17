@@ -1,0 +1,15 @@
+name = "yingyu-sync"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 部署前先建库：npx wrangler d1 create yingyu
+# 把返回的 database_id 填到下面。
+[[d1_databases]]
+binding = "DB"
+database_name = "yingyu"
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+# 密码校验用的 pepper，部署时用 `npx wrangler secret put PEPPER` 设置，
+# 或者在这里加一行 [vars] PEPPER = "随便一串长字符串"。改了 pepper 等于所有人要重新注册。
+[vars]
+PEPPER = "change-me-before-deploy"

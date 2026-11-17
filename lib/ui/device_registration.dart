@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../account/account_sync.dart';
 import '../core_bridge.dart';
 import '../local_store.dart';
 import '../models.dart';
@@ -40,6 +41,7 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     unawaited(runStartupChecks(context, widget.store));
+    unawaited(runStartupSync(context, widget.store));
   }
 
   Future<void> _open() async {

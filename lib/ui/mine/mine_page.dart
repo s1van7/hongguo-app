@@ -6,6 +6,7 @@ import '../../merge_queue.dart';
 import '../../download_overview.dart';
 import '../../local_store.dart';
 import '../../models.dart';
+import '../account/account_page.dart';
 import '../app_scope.dart';
 import '../detail/detail_page.dart';
 import '../downloads/downloads_page.dart';
@@ -78,6 +79,12 @@ class MinePage extends StatelessWidget {
           title: '下载',
           onTap: () => _openDownloads(context),
         ),
+      _Entry(
+        icon: Icons.person_outline_rounded,
+        title: '账号与同步',
+        onTap: () =>
+            openPage<void>(context, (_) => AccountPage(store: store)),
+      ),
       _Entry(
         icon: Icons.settings_outlined,
         title: '设置',
