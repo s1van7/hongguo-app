@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "name=${version//+/-}" >> "$GITHUB_OUTPUT"
+          echo "name=${version%%+*}" >> "$GITHUB_OUTPUT"
           echo "版本：$version"
 
   android:
@@ -196,7 +196,7 @@ jobs:
           tag="v${NAME}"
           ls -lh release
           cat > notes.md <<EOF
-          影屿 ${VERSION}
+          影屿 ${NAME}
 
           Android：
           - *-arm64-v8a.apk：大多数手机
@@ -212,5 +212,5 @@ jobs:
           if gh release view "$tag" > /dev/null 2>&1; then
             gh release upload "$tag" release/* --clobber
           else
-            gh release create "$tag" release/* --target "$GITHUB_SHA" --title "影屿 ${VERSION}" --notes-file notes.md
+            gh release create "$tag" release/* --target "$GITHUB_SHA" --title "影屿 ${NAME}" --notes-file notes.md
           fi
