@@ -17,6 +17,7 @@ import 'local_store.dart';
 import 'picture_in_picture.dart';
 import 'portable_data.dart';
 import 'ui/app.dart';
+import 'ui/shell/window_caption.dart';
 import 'ui/theme/app_theme.dart';
 import 'window_frame.dart';
 import 'window_on_top.dart';
@@ -33,6 +34,7 @@ Future<void> main() async {
     if (portableDataPath == null) await migrateWindowsData();
     await windowManager.ensureInitialized();
     await rememberWindowFrame();
+    await useCustomTitleBar();
   }
   if (Platform.isMacOS) {
     await windowManager.ensureInitialized();

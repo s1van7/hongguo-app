@@ -643,6 +643,13 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 _toolbar(context, position, constraints.maxWidth),
           ),
         ),
+        // 全屏时左上角留一个返回键，退出全屏
+        if (widget.fullscreen)
+          Positioned(
+            left: 12,
+            top: 12,
+            child: _icon(Icons.arrow_back_rounded, '退出全屏', widget.onFullscreen),
+          ),
         if (widget.fullscreen &&
             (_session.preferences.showClock ||
                 _session.preferences.showNetworkSpeed))

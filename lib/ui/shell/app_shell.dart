@@ -22,6 +22,7 @@ import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/source_bar.dart';
+import 'window_caption.dart';
 
 enum AppTab {
   home('首页', Icons.play_circle_outline_rounded, Icons.play_circle_rounded),
@@ -90,6 +91,7 @@ class _AppShellState extends State<AppShell> {
   final _explore = GlobalKey<ExplorePageState>();
   var _tab = AppTab.home;
   var _headerFocused = false;
+  bool _immersive = windowImmersive.value;
   FocusNode? _lastFocus;
   Timer? _exitWindow;
   DownloadOverview? _downloads;
@@ -103,9 +105,15 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     FocusManager.instance.addListener(_followFocus);
+    windowImmersive.addListener(_onImmersive);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) runStartupChecks(context, widget.store);
     });
+  }
+
+  void _onImmersive() {
+    if (!mounted || _immersive == windowImmersive.value) return;
+    setState(() => _immersive = windowImmersive.value);
   }
 
   @override
@@ -130,6 +138,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     FocusManager.instance.removeListener(_followFocus);
+    windowImmersive.removeListener(_onImmersive);
     for (final node in _tabFocus) {
       node.dispose();
     }
@@ -156,10 +165,7 @@ class _AppShellState extends State<AppShell> {
       if (switch (tab) {
         AppTab.history =>
           widget.store.historyTab && !AppScope.of(context).television,
-        AppTab.home ||
-        AppTab.explore ||
-        AppTab.follow ||
-        AppTab.mine => true,
+        AppTab.home || AppTab.explore || AppTab.follow || AppTab.mine => true,
       })
         tab,
   ];
@@ -416,9 +422,12 @@ class _AppShellState extends State<AppShell> {
 
   Widget _wide(Widget pages, bool covered) {
     final roomy = MediaQuery.sizeOf(context).width >= 840;
+    // 视频全屏/页面全屏：侧栏、标题栏全部让位，画面铺满整个窗口
+    final fullscreen = _immersive;
     // 首页信息流是沉浸式的：画面铺满整个窗口，侧栏浮在上面
     final immersive = _tab == AppTab.home && !covered;
-    final expanded = roomy && widget.store.sideBarExpanded && !immersive;
+    final expanded =
+        roomy && widget.store.sideBarExpanded && !immersive && !fullscreen;
     final side = _SideBar(
       tabs: _tabs,
       selected: _tab,
@@ -437,10 +446,23 @@ class _AppShellState extends State<AppShell> {
         child: pages,
       ),
     );
+    if (fullscreen) {
+      return Scaffold(backgroundColor: Colors.black, body: body);
+    }
     if (!immersive) {
       return Scaffold(
-        body: Row(
-          children: [side, Expanded(child: body)],
+        body: Column(
+          children: [
+            if (appCaptionEnabled) const WindowCaptionBar(),
+            Expanded(
+              child: Row(
+                children: [
+                  side,
+                  Expanded(child: body),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -450,6 +472,14 @@ class _AppShellState extends State<AppShell> {
         children: [
           Positioned.fill(child: body),
           Positioned(left: 0, top: 0, bottom: 0, child: side),
+          // 窗口按钮浮在画面顶部，不占位
+          if (appCaptionEnabled)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: WindowCaptionBar(overlay: true),
+            ),
         ],
       ),
     );

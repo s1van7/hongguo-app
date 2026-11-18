@@ -39,6 +39,7 @@ import android.util.Rational
 import android.view.InputDevice
 import android.view.OrientationEventListener
 import android.view.SurfaceHolder
+import android.view.View
 import android.view.WindowManager
 import android.provider.Settings
 import androidx.annotation.ChecksSdkIntAtLeast
@@ -233,11 +234,39 @@ class MainActivity : FlutterActivity() {
         } else isTelevisionDevice()
         super.onCreate(savedInstanceState)
         if (televisionMode) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        applyEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
         }
         if (pictureInPictureSupported()) registerPictureInPictureReceiver()
+    }
+
+    /**
+     * 强制边到边：状态栏、导航栏透明，画面一直铺到屏幕最上沿。
+     * 部分 ROM（以及 Android 15 的兼容模式）只认窗口这一层的设置，
+     * Dart 侧的 SystemUiMode.edgeToEdge 会被系统忽略。
+     */
+    private fun applyEdgeToEdge() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

@@ -19,6 +19,7 @@ import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
 import '../player/player_video.dart';
 import '../shell/app_shell.dart';
+import '../shell/window_caption.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/follow_button.dart';
 import '../widgets/status_view.dart';
@@ -28,6 +29,9 @@ double _railInsetOf(BuildContext context) {
   final form = AppScope.formFactorOf(context);
   return form == FormFactor.window || form == FormFactor.pad ? 74 : 0;
 }
+
+/// 桌面端窗口按钮浮在画面顶部，顶部内容让开这一条。
+double get _captionInset => appCaptionEnabled ? kAppCaptionHeight : 0;
 
 class HomeFeedPage extends StatefulWidget {
   const HomeFeedPage({
@@ -105,6 +109,8 @@ class HomeFeedPageState extends State<HomeFeedPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.store.addListener(_onStoreChanged);
+    // 桌面端方向键在硬件层先接住，避免被按钮/滚动/焦点遍历吃掉
+    HardwareKeyboard.instance.addHandler(_onHardwareKey);
   }
 
   @override
@@ -131,6 +137,7 @@ class HomeFeedPageState extends State<HomeFeedPage>
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onHardwareKey);
     WidgetsBinding.instance.removeObserver(this);
     widget.store.removeListener(_onStoreChanged);
     _repository?.catalogUpdates.removeListener(_onCatalogUpdated);
@@ -430,8 +437,9 @@ class HomeFeedPageState extends State<HomeFeedPage>
       if (detail.episodes.isEmpty) {
         setState(() {
           _resolvingDetail = false;
-          _activeDetailError =
-              detail.warning.isNotEmpty ? detail.warning : '暂无可播放剧集';
+          _activeDetailError = detail.warning.isNotEmpty
+              ? detail.warning
+              : '暂无可播放剧集';
         });
         return;
       }
@@ -703,25 +711,53 @@ class HomeFeedPageState extends State<HomeFeedPage>
     }
   }
 
-  KeyEventResult _onKeyEvent(FocusNode _, KeyEvent event) {
-    if (event is KeyUpEvent) return KeyEventResult.ignored;
-    final k = event.logicalKey;
-    if ((k == LogicalKeyboardKey.arrowDown ||
-            k == LogicalKeyboardKey.pageDown) &&
-        _currentIndex + 1 < _items.length) {
+  /// 桌面端上下方向键直接翻视频。硬件层先于焦点分发处理，
+  /// 这样即使焦点落在按钮、滚动视图上也不会被吃掉。
+  bool _onHardwareKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (!_isDesktop || !_effectiveForeground || _editingText) return false;
+    return _arrowKey(event.logicalKey);
+  }
+
+  /// 焦点是否落在输入框里（搜索等），此时方向键要留给光标。
+  bool get _editingText {
+    final context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) return false;
+    var editing = false;
+    context.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        editing = true;
+        return false;
+      }
+      return true;
+    });
+    return editing;
+  }
+
+  bool _arrowKey(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.pageDown) {
+      if (_currentIndex + 1 >= _items.length) return false;
       _turn(1);
-      return KeyEventResult.handled;
+      return true;
     }
-    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.pageUp) {
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.pageUp) {
       if (_currentIndex > 0) {
         _turn(-1);
-        return KeyEventResult.handled;
+        return true;
       }
       if (widget.onExitUp != null) {
         widget.onExitUp!();
-        return KeyEventResult.handled;
+        return true;
       }
     }
+    return false;
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode _, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final k = event.logicalKey;
+    if (_arrowKey(k)) return KeyEventResult.handled;
     if (k == LogicalKeyboardKey.space ||
         k == LogicalKeyboardKey.select ||
         k == LogicalKeyboardKey.enter) {
@@ -751,30 +787,6 @@ class HomeFeedPageState extends State<HomeFeedPage>
           fit: StackFit.expand,
           children: [
             _buildBody(),
-            // 桌面端没有触摸，给一对上/下按钮，放在右下角，避开右侧功能栏
-            if (_isDesktop)
-              Positioned(
-                right: 8,
-                bottom: 14,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 8,
-                  children: [
-                    _FeedNavButton(
-                      icon: Icons.keyboard_arrow_up_rounded,
-                      tooltip: '上一个（↑ / 滚轮上滚）',
-                      onPressed: _currentIndex > 0 ? () => _turn(-1) : null,
-                    ),
-                    _FeedNavButton(
-                      icon: Icons.keyboard_arrow_down_rounded,
-                      tooltip: '下一个（↓ / 滚轮下滚）',
-                      onPressed: _currentIndex + 1 < _items.length
-                          ? () => _turn(1)
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
             if (!AppScope.of(context).television)
               Positioned(
                 top: 0,
@@ -794,11 +806,12 @@ class HomeFeedPageState extends State<HomeFeedPage>
                   child: SafeArea(
                     bottom: false,
                     child: SizedBox(
-                      height: 50,
+                      // 桌面端窗口按钮浮在画面顶部，导航条让开这一条
+                      height: 50 + _captionInset,
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
                           12 + _railInsetOf(context),
-                          0,
+                          _captionInset,
                           12,
                           0,
                         ),
@@ -914,11 +927,7 @@ class HomeFeedPageState extends State<HomeFeedPage>
     if (_items.isEmpty) {
       return Theme(
         data: ThemeData.dark(useMaterial3: true),
-        child: StatusView(
-          title: '暂无推荐视频',
-          action: '刷新',
-          onAction: refresh,
-        ),
+        child: StatusView(title: '暂无推荐视频', action: '刷新', onAction: refresh),
       );
     }
     return Listener(
@@ -981,6 +990,8 @@ class HomeFeedPageState extends State<HomeFeedPage>
                 onEpisodes: () => _showEpisodePicker(drama),
                 onFullPlayer: () => _openFullPlayer(drama),
                 onDetail: () => _openDramaDetail(drama),
+                onPrevious: index > 0 ? () => _turn(-1) : null,
+                onNext: index + 1 < _items.length ? () => _turn(1) : null,
               );
             },
           ),
@@ -1009,6 +1020,8 @@ class _FeedSlide extends StatefulWidget {
     required this.onEpisodes,
     required this.onFullPlayer,
     required this.onDetail,
+    this.onPrevious,
+    this.onNext,
   });
 
   final LocalStore store;
@@ -1027,6 +1040,8 @@ class _FeedSlide extends StatefulWidget {
   final VoidCallback onEpisodes;
   final VoidCallback onFullPlayer;
   final VoidCallback onDetail;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
 
   @override
   State<_FeedSlide> createState() => _FeedSlideState();
@@ -1035,6 +1050,9 @@ class _FeedSlide extends StatefulWidget {
 class _FeedSlideState extends State<_FeedSlide> {
   bool _expanded = false;
   Offset _tapDown = Offset.zero;
+
+  static bool get _desktop =>
+      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   @override
   Widget build(BuildContext context) {
@@ -1048,9 +1066,7 @@ class _FeedSlideState extends State<_FeedSlide> {
 
   static String _speedText(double value) {
     final text = value.toStringAsFixed(2);
-    return text
-        .replaceAll(RegExp(r'0+$'), '')
-        .replaceAll(RegExp(r'\.$'), '');
+    return text.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
   }
 
   Future<void> _pickSpeed(PlaybackSession session) async {
@@ -1198,11 +1214,11 @@ class _FeedSlideState extends State<_FeedSlide> {
               child: Text('重试：$err', maxLines: 1),
             ),
           ),
-        // 右侧功能栏：整体上移，给右下角的翻页按钮腾位置；窗口矮时等比缩小
+        // 右侧功能栏：整体上移，给底部条腾位置；窗口矮时等比缩小
         Positioned(
           right: 10,
           width: 76,
-          top: 64,
+          top: 64 + _captionInset + MediaQuery.paddingOf(context).top,
           bottom: 124,
           child: FittedBox(
             fit: BoxFit.scaleDown,
@@ -1223,7 +1239,11 @@ class _FeedSlideState extends State<_FeedSlide> {
                     ),
                     const Text(
                       '追剧',
-                      style: TextStyle(color: Colors.white, fontSize: 11.5),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        shadows: _RailBtn._shadow,
+                      ),
                     ),
                   ],
                 ),
@@ -1234,11 +1254,12 @@ class _FeedSlideState extends State<_FeedSlide> {
                 ),
                 _RailBtn(
                   icon: Icons.speed_rounded,
-                  label: session == null ? '倍速' : '${_speedText(session.speed)}x',
+                  label: session == null
+                      ? '倍速'
+                      : '${_speedText(session.speed)}x',
                   onTap: session == null
                       ? null
                       : () => unawaited(_pickSpeed(session)),
-                  active: session != null && session.speed != 1,
                 ),
                 _RailBtn(
                   icon: Icons.fullscreen_rounded,
@@ -1252,98 +1273,118 @@ class _FeedSlideState extends State<_FeedSlide> {
                   label: widget.muted ? '静音' : '声音',
                   onTap: widget.onToggleMute,
                 ),
+                // 桌面端没有触摸：上下翻页按钮和上面几个长得一样
+                if (_desktop)
+                  _RailBtn(
+                    icon: Icons.keyboard_arrow_up_rounded,
+                    label: '上一个',
+                    onTap: widget.onPrevious,
+                  ),
+                if (_desktop)
+                  _RailBtn(
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    label: '下一个',
+                    onTap: widget.onNext,
+                  ),
               ],
             ),
           ),
         ),
         Positioned(
           left: 14 + _railInsetOf(context),
-          right: 72,
-          bottom: 18,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            spacing: 8,
-            children: [
-              GestureDetector(
-                onTap: widget.onDetail,
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  children: [
-                    Text(
-                      widget.drama.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
+          right: 14,
+          bottom: 16,
+          child: ConstrainedBox(
+            // 宽屏不要把整条拉满，手机上自动占满可用宽度
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: [
+                GestureDetector(
+                  onTap: widget.onDetail,
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Text(
+                        widget.drama.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '第$epNum集',
+                      Text(
+                        '第$epNum集',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (widget.drama.vip) const VipBadge(),
+                    ],
+                  ),
+                ),
+                if (widget.drama.description.trim().isNotEmpty)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Text(
+                      widget.drama.description.trim(),
+                      maxLines: _expanded ? 5 : 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13,
                       ),
                     ),
-                    if (widget.drama.vip) const VipBadge(),
-                  ],
-                ),
-              ),
-              if (widget.drama.description.trim().isNotEmpty)
-                GestureDetector(
-                  onTap: () => setState(() => _expanded = !_expanded),
-                  child: Text(
-                    widget.drama.description.trim(),
-                    maxLines: _expanded ? 5 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
                   ),
-                ),
-              Material(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
+                Material(
+                  color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(10),
-                  onTap: widget.onFullPlayer,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.play_circle_fill_rounded,
-                          color: Color(0xFFFF4D4F),
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            total > 0
-                                ? '观看完整短剧 · 共 $total 集'
-                                : '观看完整短剧 · 选集连播',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: widget.onFullPlayer,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: Color(0xFFFF4D4F),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              total > 0
+                                  ? '观看完整短剧 · 共 $total 集'
+                                  : '观看完整短剧 · 选集连播',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        ),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          color: Colors.white70,
-                          size: 18,
-                        ),
-                      ],
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white70,
+                            size: 18,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         Positioned(
@@ -1366,19 +1407,18 @@ class _RailBtn extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.active = false,
   });
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
 
-  /// 非默认状态（比如倍速不是 1x）时用主题色提示。
-  final bool active;
+  /// 亮画面上的白字需要一点阴影才看得清。
+  static const _shadow = [Shadow(color: Color(0x8C000000), blurRadius: 4)];
 
   @override
   Widget build(BuildContext context) {
-    final color = active
-        ? Theme.of(context).colorScheme.primary
+    final color = onTap == null
+        ? Colors.white.withValues(alpha: .45)
         : Colors.white;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1387,8 +1427,11 @@ class _RailBtn extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         spacing: 2,
         children: [
-          Icon(icon, color: color, size: 28),
-          Text(label, style: TextStyle(color: color, fontSize: 11.5)),
+          Icon(icon, color: color, size: 28, shadows: _shadow),
+          Text(
+            label,
+            style: TextStyle(color: color, fontSize: 11.5, shadows: _shadow),
+          ),
         ],
       ),
     );
@@ -1428,7 +1471,9 @@ class _ProgressBar extends StatelessWidget {
           builder: (_, box) => GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: (d) {
-              final ms = (total * (d.localPosition.dx / box.maxWidth).clamp(0.0, 1.0)).round();
+              final ms =
+                  (total * (d.localPosition.dx / box.maxWidth).clamp(0.0, 1.0))
+                      .round();
               unawaited(session?.seekTo(Duration(milliseconds: ms)));
             },
             child: SizedBox(
@@ -1446,31 +1491,6 @@ class _ProgressBar extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _FeedNavButton extends StatelessWidget {
-  const _FeedNavButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: .45),
-      shape: const CircleBorder(),
-      child: IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: 26),
-      ),
     );
   }
 }
