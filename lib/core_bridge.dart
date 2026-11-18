@@ -582,7 +582,14 @@ class NativeRepository extends AppRepository {
     return result['available'] == true
         ? AppUpdate(
             version: result['version'] as String,
-            url: result['url'] as String,
+            sources: [
+              UpdateSource(
+                kind: UpdateSourceKind.selfHosted,
+                label: '下载',
+                hint: '打开下载地址',
+                url: result['url'] as String,
+              ),
+            ],
           )
         : null;
   }

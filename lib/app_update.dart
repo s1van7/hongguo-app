@@ -4,10 +4,31 @@ import 'dart:io';
 
 import 'package:package_info_plus/package_info_plus.dart';
 
-class AppUpdate {
-  const AppUpdate({required this.version, required this.url});
-  final String version;
+/// 下载来源：同一个版本可以有多个来源，让用户自己挑。
+enum UpdateSourceKind { mirror, selfHosted, github, page }
+
+class UpdateSource {
+  const UpdateSource({
+    required this.kind,
+    required this.label,
+    required this.hint,
+    required this.url,
+  });
+
+  final UpdateSourceKind kind;
+  final String label;
+  final String hint;
   final String url;
+}
+
+class AppUpdate {
+  const AppUpdate({required this.version, required this.sources});
+
+  final String version;
+  final List<UpdateSource> sources;
+
+  /// 默认来源（清单里排第一的那个）。
+  String get url => sources.first.url;
 }
 
 /// 发布仓库。改仓库时这里和 `.github/workflows` 一起改。
@@ -89,7 +110,14 @@ Future<AppUpdate?> fetchLatestRelease(
   if (compareVersions(version, current) <= 0) return null;
   return AppUpdate(
     version: version,
-    url: 'https://github.com/$releaseRepository/releases/tag/$tag',
+    sources: [
+      UpdateSource(
+        kind: UpdateSourceKind.page,
+        label: '打开 GitHub 发布页',
+        hint: '手动挑对应平台的安装包',
+        url: 'https://github.com/$releaseRepository/releases/tag/$tag',
+      ),
+    ],
   );
 }
 
@@ -103,18 +131,27 @@ String get _platformKey {
   return 'android';
 }
 
-/// 先按平台取 `platforms.<平台>.url`，取不到再退回顶层 `url`（兼容旧清单）。
-String? _manifestUrlFor(Map json) {
-  final platforms = json['platforms'];
-  if (platforms is Map) {
-    final entry = platforms[_platformKey];
-    if (entry is Map) {
-      final url = entry['url'];
-      if (url is String && url.isNotEmpty) return url;
-    }
+/// 按平台收集下载来源：加速镜像、自建、GitHub 直连，有几个给几个。
+///
+/// 老清单只有顶层 `url`，也照样认。
+List<UpdateSource> _manifestSources(Map json) {
+  final sources = <UpdateSource>[];
+  void add(UpdateSourceKind kind, String label, String hint, Object? raw) {
+    if (raw is! String || raw.isEmpty) return;
+    if (sources.any((s) => s.url == raw)) return;
+    sources.add(UpdateSource(kind: kind, label: label, hint: hint, url: raw));
   }
-  final url = json['url'];
-  return url is String && url.isNotEmpty ? url : null;
+
+  final platforms = json['platforms'];
+  final entry = platforms is Map ? platforms[_platformKey] : null;
+  final map = entry is Map ? entry : const {};
+  add(UpdateSourceKind.mirror, '加速下载', 'GitHub 镜像，通常最快', map['mirror']);
+  add(UpdateSourceKind.selfHosted, '自建下载', '走你的服务器，稳定但带宽有限', map['url']);
+  add(UpdateSourceKind.github, 'GitHub 下载', '需要能直连 github.com', map['github']);
+  if (sources.isEmpty) {
+    add(UpdateSourceKind.selfHosted, '下载', '打开下载地址', json['url']);
+  }
+  return sources;
 }
 
 /// 读自建更新清单，国内可直连。
@@ -143,11 +180,11 @@ Future<AppUpdate?> _fromManifest(Duration timeout) async {
     final json = jsonDecode(body);
     if (json is! Map) throw const AppUpdateFailure('更新清单格式不对');
     final version = normalizeVersion('${json['version']}');
-    final url = _manifestUrlFor(json);
-    if (version == null || url == null) {
+    final sources = _manifestSources(json);
+    if (version == null || sources.isEmpty) {
       throw const AppUpdateFailure('更新清单缺少版本或下载地址');
     }
-    return AppUpdate(version: version, url: url);
+    return AppUpdate(version: version, sources: sources);
   } on AppUpdateFailure {
     rethrow;
   } catch (_) {

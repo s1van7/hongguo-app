@@ -61,10 +61,6 @@ enum VideoFit {
   }
 }
 
-/// 画面比容器矮（上下留黑）时贴底显示，让烧在视频底部的字幕落在播放器底部。
-bool videoSitsAtBottom(Size box, Size shown) =>
-    shown.height < box.height - 0.5;
-
 const danmakuScaleMin = .6;
 const danmakuScaleMax = 2.0;
 

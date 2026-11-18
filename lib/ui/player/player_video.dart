@@ -46,9 +46,6 @@ class PlayerVideo extends StatelessWidget {
                 : fit.size(box, source, ratio);
             final sized = ClipRect(
               child: OverflowBox(
-                alignment: videoSitsAtBottom(box, size)
-                    ? Alignment.bottomCenter
-                    : Alignment.center,
                 minWidth: size.width,
                 maxWidth: size.width,
                 minHeight: size.height,

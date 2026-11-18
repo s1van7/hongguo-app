@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io' show Platform;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -719,6 +720,9 @@ class HomeFeedPageState extends State<HomeFeedPage>
     return KeyEventResult.ignored;
   }
 
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+
   String _errorMessage(Object e) =>
       e is AppFailure && e.message.isNotEmpty ? e.message : e.toString();
 
@@ -730,11 +734,45 @@ class HomeFeedPageState extends State<HomeFeedPage>
       color: Colors.black,
       child: Focus(
         focusNode: _focusNode,
+        autofocus: _isDesktop,
         onKeyEvent: _onKeyEvent,
         child: Stack(
           fit: StackFit.expand,
           children: [
             _buildBody(),
+            // 桌面端没有触摸，给一对上/下按钮，配合滚轮和方向键翻页
+            if (_isDesktop)
+              Positioned(
+                right: 12,
+                bottom: 132,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedNavButton(
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      tooltip: '上一个',
+                      onPressed: _currentIndex > 0 && _pageController.hasClients
+                          ? () => _pageController.previousPage(
+                                duration: const Duration(milliseconds: 260),
+                                curve: Curves.easeOutCubic,
+                              )
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    _FeedNavButton(
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      tooltip: '下一个',
+                      onPressed: _currentIndex + 1 < _items.length &&
+                              _pageController.hasClients
+                          ? () => _pageController.nextPage(
+                                duration: const Duration(milliseconds: 260),
+                                curve: Curves.easeOutCubic,
+                              )
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
             if (!AppScope.of(context).television)
               Positioned(
                 top: 0,
@@ -1323,6 +1361,31 @@ class _ProgressBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _FeedNavButton extends StatelessWidget {
+  const _FeedNavButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: .45),
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white, size: 26),
+      ),
     );
   }
 }
