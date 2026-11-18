@@ -94,8 +94,34 @@ Future<AppUpdate?> fetchLatestRelease(
 }
 
 
-/// 读自建更新清单 `{"version":"1.0.3","url":"...apk"}`，国内可直连。
-/// 清单正常返回对应 [AppUpdate]；连不上或格式不对抛 [AppUpdateFailure]。
+/// 清单里的平台键：Windows 取 exe，Android 取 apk。
+String get _platformKey {
+  if (Platform.isWindows) return 'windows';
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isLinux) return 'linux';
+  if (Platform.isIOS) return 'ios';
+  return 'android';
+}
+
+/// 先按平台取 `platforms.<平台>.url`，取不到再退回顶层 `url`（兼容旧清单）。
+String? _manifestUrlFor(Map json) {
+  final platforms = json['platforms'];
+  if (platforms is Map) {
+    final entry = platforms[_platformKey];
+    if (entry is Map) {
+      final url = entry['url'];
+      if (url is String && url.isNotEmpty) return url;
+    }
+  }
+  final url = json['url'];
+  return url is String && url.isNotEmpty ? url : null;
+}
+
+/// 读自建更新清单，国内可直连。
+///
+/// 形如 `{"version":"1.0.6","platforms":{"android":{"url":"...apk"},
+/// "windows":{"url":"...exe"}}}`。清单正常返回对应 [AppUpdate]；
+/// 连不上或格式不对抛 [AppUpdateFailure]。
 Future<AppUpdate?> _fromManifest(Duration timeout) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
@@ -117,8 +143,8 @@ Future<AppUpdate?> _fromManifest(Duration timeout) async {
     final json = jsonDecode(body);
     if (json is! Map) throw const AppUpdateFailure('更新清单格式不对');
     final version = normalizeVersion('${json['version']}');
-    final url = json['url'];
-    if (version == null || url is! String || url.isEmpty) {
+    final url = _manifestUrlFor(json);
+    if (version == null || url == null) {
       throw const AppUpdateFailure('更新清单缺少版本或下载地址');
     }
     return AppUpdate(version: version, url: url);
