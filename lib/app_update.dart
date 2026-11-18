@@ -54,27 +54,34 @@ class AppUpdateFailure implements Exception {
   String toString() => message;
 }
 
-/// 查 GitHub Release 上有没有比 [current] 更新的版本。
+/// 查自建清单与 GitHub Release 上有没有比 [current] 更新的版本。
 ///
-/// 有更新返回 [AppUpdate]，已是最新返回 null，网络/解析失败抛 [AppUpdateFailure]。
-/// 先读 `releases/latest` 的重定向（不占接口配额），失败再退回 API。
+/// 优先读自建更新清单 `latest.json`；当自建服务不可用，或自建清单版本不高于 [current] 时，
+/// 自动继续检查 GitHub Release（先读 `releases/latest` 重定向，失败再退回 API）取更高版本。
 Future<AppUpdate?> fetchLatestRelease(
   String current, {
   Duration timeout = const Duration(seconds: 8),
 }) async {
+  var manifestReached = false;
   try {
     final hosted = await _fromManifest(timeout);
-    if (hosted == null) return null;
-    return compareVersions(hosted.version, current) <= 0 ? null : hosted;
+    if (hosted != null) {
+      manifestReached = true;
+      if (compareVersions(hosted.version, current) > 0) {
+        return hosted;
+      }
+    }
   } on AppUpdateFailure {
     // 自建更新服务不可用时退回 GitHub
   }
   final tag = await _tagFromRedirect(timeout) ?? await _tagFromApi(timeout);
   if (tag == null) {
+    if (manifestReached) return null;
     throw const AppUpdateFailure('连不上更新服务，请检查网络');
   }
   final version = normalizeVersion(tag);
   if (version == null) {
+    if (manifestReached) return null;
     throw const AppUpdateFailure('发布页版本号无法识别');
   }
   if (compareVersions(version, current) <= 0) return null;
@@ -86,7 +93,7 @@ Future<AppUpdate?> fetchLatestRelease(
 
 
 /// 读自建更新清单 `{"version":"1.0.3","url":"...apk"}`，国内可直连。
-/// 清单正常但没有新版本返回 null；连不上或格式不对抛 [AppUpdateFailure]。
+/// 清单正常返回对应 [AppUpdate]；连不上或格式不对抛 [AppUpdateFailure]。
 Future<AppUpdate?> _fromManifest(Duration timeout) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
