@@ -42,6 +42,7 @@ class PlayerSurface extends StatefulWidget {
     required this.onWide,
     required this.onVolume,
     this.onMiniWindow,
+    this.onEpisodes,
     required this.onSurface,
   });
   final PlaybackHandle handle;
@@ -53,6 +54,9 @@ class PlayerSurface extends StatefulWidget {
   final VoidCallback onWide;
   final ValueChanged<double> onVolume;
   final VoidCallback? onMiniWindow;
+
+  /// 打开选集；为 null 时不显示选集按钮。
+  final VoidCallback? onEpisodes;
   final VoidCallback onSurface;
 
   @override
@@ -63,6 +67,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final _links = {for (final popup in _Popup.values) popup: LayerLink()};
   Timer? _hideTimer;
+  DateTime? _wheelAt;
   Timer? _pointerTimer;
   Timer? _closeTimer;
   Timer? _tapTimer;
@@ -149,7 +154,10 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   }
 
   bool get _controlsVisible =>
-      _visible || _session.paused || _session.stalled || !_session.ready;
+      _visible ||
+      !_session.player.state.playing ||
+      _session.stalled ||
+      !_session.ready;
 
   void _scheduleHide() {
     _hideTimer?.cancel();
@@ -237,10 +245,28 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
 
   void _wheel(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
-    GestureBinding.instance.pointerSignalResolver.register(
-      event,
-      (_) => widget.onVolume(event.scrollDelta.dy < 0 ? 5 : -5),
-    );
+    final dy = event.scrollDelta.dy;
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      final keyboard = HardwareKeyboard.instance;
+      // 按住 Ctrl/Shift 滚轮才是音量，其余情况一格换一集
+      if (keyboard.isControlPressed || keyboard.isShiftPressed) {
+        widget.onVolume(dy < 0 ? 5 : -5);
+        return;
+      }
+      final now = DateTime.now();
+      final last = _wheelAt;
+      if (last != null &&
+          now.difference(last) < const Duration(milliseconds: 220)) {
+        return;
+      }
+      _wheelAt = now;
+      if (dy > 0) {
+        if (_session.hasNext) unawaited(_session.next());
+      } else if (_session.hasPrevious) {
+        unawaited(_session.previous());
+      }
+      _show();
+    });
   }
 
   void _startStreak(int side) {
@@ -374,7 +400,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                     )
                   : null,
             ),
-            _pausedMark(_session.ready && _session.paused),
+            _pausedMark(_session.ready && !_session.player.state.playing),
             FadePresence(
               scaleFrom: .9,
               child: _streak != 0 ? _streakBadge() : null,
@@ -698,6 +724,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
       return true;
     }
 
+    final showEpisodes = widget.onEpisodes != null && fits(_iconSlot);
     final showSpeed = fits(_textSlot(speed, bold: true));
     final showQuality = fits(_textSlot(_session.qualityLabel));
     final showWide = !widget.touch && !widget.fullscreen && fits(_iconSlot);
@@ -740,6 +767,8 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
           ),
         ],
         const Spacer(),
+        if (showEpisodes)
+          _icon(Icons.playlist_play_rounded, '选集', widget.onEpisodes),
         if (showQuality)
           _popupTarget(
             _Popup.quality,

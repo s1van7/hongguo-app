@@ -10,6 +10,7 @@ import 'package:media_kit/media_kit.dart';
 import '../../core_bridge.dart';
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../detail/detail_page.dart';
@@ -74,6 +75,10 @@ class HomeFeedPageState extends State<HomeFeedPage>
   int _activationToken = 0;
   Timer? _settleTimer;
   Timer? _wheelCooldown;
+  double _wheelAccum = 0;
+
+  /// 累积到这么多像素就翻一页。鼠标滚轮一格是 100，触控板是小增量。
+  static const double _wheelStep = 24;
   Timer? _heartTimer;
   StreamSubscription<bool>? _completedSub;
   Offset? _doubleTapPosition;
@@ -654,27 +659,38 @@ class HomeFeedPageState extends State<HomeFeedPage>
   }
 
   void _onPointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        _wheelCooldown != null ||
-        !_pageController.hasClients ||
-        event.scrollDelta.dy.abs() < 18) {
-      return;
-    }
+    if (event is! PointerScrollEvent) return;
+    final dy = event.scrollDelta.dy;
+    if (dy == 0) return;
+    // 换方向先把累积清零，避免来回滚动互相抵消
+    if (_wheelAccum != 0 && _wheelAccum.sign != dy.sign) _wheelAccum = 0;
+    _wheelAccum += dy;
+    if (_wheelAccum.abs() < _wheelStep) return;
+    _wheelAccum = 0;
+    if (_wheelCooldown != null) return;
     _wheelCooldown = Timer(
-      const Duration(milliseconds: 420),
+      const Duration(milliseconds: 160),
       () => _wheelCooldown = null,
     );
-    if (event.scrollDelta.dy > 0 && _currentIndex + 1 < _items.length) {
+    _turn(dy > 0 ? 1 : -1);
+  }
+
+  /// 翻一页。滚轮和方向键共用，动画短一点，手感更跟手。
+  void _turn(int direction) {
+    if (!_pageController.hasClients) return;
+    if (direction > 0) {
+      if (_currentIndex + 1 >= _items.length) return;
       unawaited(
         _pageController.nextPage(
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
         ),
       );
-    } else if (event.scrollDelta.dy < 0 && _currentIndex > 0) {
+    } else {
+      if (_currentIndex <= 0) return;
       unawaited(
         _pageController.previousPage(
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
         ),
       );
@@ -686,24 +702,13 @@ class HomeFeedPageState extends State<HomeFeedPage>
     final k = event.logicalKey;
     if ((k == LogicalKeyboardKey.arrowDown ||
             k == LogicalKeyboardKey.pageDown) &&
-        _currentIndex + 1 < _items.length &&
-        _pageController.hasClients) {
-      unawaited(
-        _pageController.nextPage(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-        ),
-      );
+        _currentIndex + 1 < _items.length) {
+      _turn(1);
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.pageUp) {
-      if (_currentIndex > 0 && _pageController.hasClients) {
-        unawaited(
-          _pageController.previousPage(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-          ),
-        );
+      if (_currentIndex > 0) {
+        _turn(-1);
         return KeyEventResult.handled;
       }
       if (widget.onExitUp != null) {
@@ -740,34 +745,25 @@ class HomeFeedPageState extends State<HomeFeedPage>
           fit: StackFit.expand,
           children: [
             _buildBody(),
-            // 桌面端没有触摸，给一对上/下按钮，配合滚轮和方向键翻页
+            // 桌面端没有触摸，给一对上/下按钮，放在右下角，避开右侧功能栏
             if (_isDesktop)
               Positioned(
                 right: 12,
-                bottom: 132,
-                child: Column(
+                bottom: 18,
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  spacing: 8,
                   children: [
                     _FeedNavButton(
                       icon: Icons.keyboard_arrow_up_rounded,
-                      tooltip: '上一个',
-                      onPressed: _currentIndex > 0 && _pageController.hasClients
-                          ? () => _pageController.previousPage(
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                              )
-                          : null,
+                      tooltip: '上一个（↑ / 滚轮上滚）',
+                      onPressed: _currentIndex > 0 ? () => _turn(-1) : null,
                     ),
-                    const SizedBox(height: 10),
                     _FeedNavButton(
                       icon: Icons.keyboard_arrow_down_rounded,
-                      tooltip: '下一个',
-                      onPressed: _currentIndex + 1 < _items.length &&
-                              _pageController.hasClients
-                          ? () => _pageController.nextPage(
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                              )
+                      tooltip: '下一个（↓ / 滚轮下滚）',
+                      onPressed: _currentIndex + 1 < _items.length
+                          ? () => _turn(1)
                           : null,
                     ),
                   ],
@@ -930,9 +926,12 @@ class HomeFeedPageState extends State<HomeFeedPage>
           child: PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
-            physics: const PageScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
+            // 桌面端滚轮由 _onPointerSignal 独占，避免和 PageView 自己抢导致要滚好几格
+            physics: _isDesktop
+                ? const NeverScrollableScrollPhysics()
+                : const PageScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
             onPageChanged: _onPageChanged,
             itemCount: _items.length,
             itemBuilder: (_, index) {
@@ -1036,6 +1035,57 @@ class _FeedSlideState extends State<_FeedSlide> {
     );
   }
 
+  static String _speedText(double value) {
+    final text = value.toStringAsFixed(2);
+    return text
+        .replaceAll(RegExp(r'0+$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
+  }
+
+  Future<void> _pickSpeed(PlaybackSession session) async {
+    final picked = await showModalBottomSheet<double>(
+      context: context,
+      backgroundColor: const Color(0xFF16161A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '播放速度',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final speed in playbackSpeeds)
+                    ChoiceChip(
+                      label: Text('${_speedText(speed)}x'),
+                      selected: (session.speed - speed).abs() < .001,
+                      onSelected: (_) => Navigator.pop(ctx, speed),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null) await session.setSpeed(picked);
+  }
+
   Widget _content(BuildContext context, PlaybackSession? session) {
     final ready = session != null && session.ready;
     final err = widget.error ?? session?.error;
@@ -1087,7 +1137,10 @@ class _FeedSlideState extends State<_FeedSlide> {
             onLongPressCancel: () => session?.endBoost(),
           ),
         ),
-        if (session != null && session.paused && ready && err == null)
+        if (session != null &&
+            ready &&
+            err == null &&
+            !session.player.state.playing)
           const Center(
             child: IgnorePointer(
               child: Icon(
@@ -1134,47 +1187,62 @@ class _FeedSlideState extends State<_FeedSlide> {
               child: Text('重试：$err', maxLines: 1),
             ),
           ),
+        // 右侧功能栏：整体上移，给右下角的翻页按钮腾位置；窗口矮时等比缩小
         Positioned(
           right: 10,
-          bottom: 72,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 14,
-            children: [
-              Column(
-                children: [
-                  FollowIcon(
-                    store: widget.store,
-                    drama: widget.drama,
-                    color: Colors.white,
-                    activeColor: const Color(0xFFFF3B5C),
-                    size: 28,
-                    extent: 44,
-                  ),
-                  const Text(
-                    '追剧',
-                    style: TextStyle(color: Colors.white, fontSize: 11.5),
-                  ),
-                ],
-              ),
-              _RailBtn(
-                icon: Icons.format_list_numbered_rounded,
-                label: total > 0 ? '选集·$total' : '选集',
-                onTap: widget.onEpisodes,
-              ),
-              _RailBtn(
-                icon: Icons.fullscreen_rounded,
-                label: '全屏',
-                onTap: widget.onFullPlayer,
-              ),
-              _RailBtn(
-                icon: widget.muted
-                    ? Icons.volume_off_rounded
-                    : Icons.volume_up_rounded,
-                label: widget.muted ? '静音' : '声音',
-                onTap: widget.onToggleMute,
-              ),
-            ],
+          width: 76,
+          top: 64,
+          bottom: 112,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.bottomCenter,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 14,
+              children: [
+                Column(
+                  children: [
+                    FollowIcon(
+                      store: widget.store,
+                      drama: widget.drama,
+                      color: Colors.white,
+                      activeColor: const Color(0xFFFF3B5C),
+                      size: 28,
+                      extent: 44,
+                    ),
+                    const Text(
+                      '追剧',
+                      style: TextStyle(color: Colors.white, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+                _RailBtn(
+                  icon: Icons.format_list_numbered_rounded,
+                  label: total > 0 ? '选集·$total' : '选集',
+                  onTap: widget.onEpisodes,
+                ),
+                _RailBtn(
+                  icon: Icons.speed_rounded,
+                  label: session == null ? '倍速' : '${_speedText(session.speed)}x',
+                  onTap: session == null
+                      ? null
+                      : () => unawaited(_pickSpeed(session)),
+                  active: session != null && session.speed != 1,
+                ),
+                _RailBtn(
+                  icon: Icons.fullscreen_rounded,
+                  label: '全屏',
+                  onTap: widget.onFullPlayer,
+                ),
+                _RailBtn(
+                  icon: widget.muted
+                      ? Icons.volume_off_rounded
+                      : Icons.volume_up_rounded,
+                  label: widget.muted ? '静音' : '声音',
+                  onTap: widget.onToggleMute,
+                ),
+              ],
+            ),
           ),
         ),
         Positioned(
@@ -1287,27 +1355,33 @@ class _RailBtn extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.active = false,
   });
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+
+  /// 非默认状态（比如倍速不是 1x）时用主题色提示。
+  final bool active;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: onTap,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 2,
-      children: [
-        Icon(icon, color: Colors.white, size: 28),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white, fontSize: 11.5),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final color = active
+        ? Theme.of(context).colorScheme.primary
+        : Colors.white;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 2,
+        children: [
+          Icon(icon, color: color, size: 28),
+          Text(label, style: TextStyle(color: color, fontSize: 11.5)),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProgressBar extends StatelessWidget {

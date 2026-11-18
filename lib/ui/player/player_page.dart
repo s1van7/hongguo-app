@@ -174,7 +174,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   KeyEventResult _key(FocusNode _, KeyEvent event) {
     final key = event.logicalKey;
     final down = event is KeyDownEvent;
-    final repeat = down || event is KeyRepeatEvent;
     if (key == LogicalKeyboardKey.arrowRight && event is KeyUpEvent) {
       if (!_seekHeld) return KeyEventResult.ignored;
       _seekHeld = false;
@@ -182,6 +181,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       return KeyEventResult.handled;
     }
     final keyboard = HardwareKeyboard.instance;
+    // Shift + ↑↓ 留给音量，其余修饰键直接放行给系统
+    if (keyboard.isShiftPressed &&
+        (key == LogicalKeyboardKey.arrowUp ||
+            key == LogicalKeyboardKey.arrowDown)) {
+      if (down) {
+        _volume(
+          _playback.changeVolume(key == LogicalKeyboardKey.arrowUp ? 5 : -5),
+        );
+      }
+      return KeyEventResult.handled;
+    }
     if (keyboard.isAltPressed ||
         keyboard.isControlPressed ||
         keyboard.isMetaPressed ||
@@ -210,9 +220,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       case LogicalKeyboardKey.arrowLeft:
         if (down) _seek(-5);
       case LogicalKeyboardKey.arrowUp:
-        if (repeat) _volume(_playback.changeVolume(5));
+        if (down) _episode(-1);
       case LogicalKeyboardKey.arrowDown:
-        if (repeat) _volume(_playback.changeVolume(-5));
+        if (down) _episode(1);
       case LogicalKeyboardKey.keyM:
         if (down) _volume(_playback.toggleMute());
       case LogicalKeyboardKey.mediaTrackNext || LogicalKeyboardKey.pageDown:
@@ -252,6 +262,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             onWide: _toggleWide,
             onVolume: (delta) => _volume(_playback.changeVolume(delta)),
             onMiniWindow: widget.onMiniWindow,
+            onEpisodes: () => unawaited(_showEpisodes()),
             onSurface: _focus.requestFocus,
           ),
         ),
@@ -304,6 +315,76 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Future<void> _showEpisodes() async {
+    if (_episodes.isEmpty) return;
+    final current = _playback.index;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF16161A),
+        insetPadding: const EdgeInsets.all(24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SizedBox(
+          width: 420,
+          height: 520,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_drama.title} · 共 ${_episodes.length} 集',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: const Icon(Icons.close_rounded),
+                      color: Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    brightness: Brightness.dark,
+                    colorScheme: ColorScheme.fromSeed(
+                      seedColor: Theme.of(context).colorScheme.primary,
+                      brightness: Brightness.dark,
+                    ),
+                  ),
+                  child: EpisodeGrid(
+                    episodes: _episodes,
+                    current: current,
+                    selecting: false,
+                    selected: const {},
+                    onSelectionChanged: () {},
+                    onPick: (index) {
+                      Navigator.pop(dialogContext);
+                      if (index != _playback.index) {
+                        unawaited(_playback.play(index));
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    _focus.requestFocus();
   }
 
   Widget _header() {

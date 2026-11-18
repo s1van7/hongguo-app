@@ -916,7 +916,8 @@ class PlaybackSession extends ChangeNotifier {
   void togglePlayback() {
     if (!_usable || !ready) return;
     endBoost();
-    _playIntent = !player.state.playing;
+    // 按“实际在播”判断：播放器已停（哪怕意图是播）时，这一次点击就是“开始播放”
+    _playIntent = !(player.state.playing && _playIntent);
     _health.reset();
     if (_playIntent && player.state.completed) {
       unawaited(play(_index));
