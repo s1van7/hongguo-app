@@ -14,6 +14,7 @@ import '../explore/explore_page.dart';
 import '../explore/source_actions.dart';
 import '../follow/follow_page.dart';
 import '../history/history_page.dart';
+import '../home/home_feed_page.dart';
 import '../mine/mine_page.dart';
 import '../update_prompt.dart';
 import '../widgets/bar_button.dart';
@@ -23,6 +24,7 @@ import '../widgets/motion/motion_widgets.dart';
 import '../widgets/source_bar.dart';
 
 enum AppTab {
+  home('首页', Icons.play_circle_outline_rounded, Icons.play_circle_rounded),
   explore('发现', Icons.explore_outlined, Icons.explore),
   follow('追剧', Icons.bookmark_border_rounded, Icons.bookmark_rounded),
   history('历史', Icons.history_rounded, Icons.history_rounded),
@@ -79,12 +81,14 @@ class _AppShellState extends State<AppShell> {
   ];
   final _tabFocus = [for (final _ in AppTab.values) FocusNode()];
   final _tabScrolls = [for (final _ in AppTab.values) ScrollController()];
+  final _homeEntry = FocusNode();
   final _followEntry = FocusNode();
   final _mineEntry = FocusNode();
   final _header = FocusNode();
   final _televisionTabs = GlobalKey();
+  final _home = GlobalKey<HomeFeedPageState>();
   final _explore = GlobalKey<ExplorePageState>();
-  var _tab = AppTab.explore;
+  var _tab = AppTab.home;
   var _headerFocused = false;
   FocusNode? _lastFocus;
   Timer? _exitWindow;
@@ -135,6 +139,7 @@ class _AppShellState extends State<AppShell> {
     for (final hero in _heroes) {
       hero.dispose();
     }
+    _homeEntry.dispose();
     _followEntry.dispose();
     _mineEntry.dispose();
     _header.dispose();
@@ -151,7 +156,10 @@ class _AppShellState extends State<AppShell> {
       if (switch (tab) {
         AppTab.history =>
           widget.store.historyTab && !AppScope.of(context).television,
-        AppTab.explore || AppTab.follow || AppTab.mine => true,
+        AppTab.home ||
+        AppTab.explore ||
+        AppTab.follow ||
+        AppTab.mine => true,
       })
         tab,
   ];
@@ -164,6 +172,7 @@ class _AppShellState extends State<AppShell> {
     if (navigator != null && navigator.canPop()) {
       return navigator.popUntil((route) => route.isFirst);
     }
+    if (tab == AppTab.home) return _home.currentState?.reselect();
     if (tab == AppTab.explore) return _explore.currentState?.reselect();
     for (final position in _tabScrolls[tab.index].positions) {
       if (position.pixels <= position.minScrollExtent) continue;
@@ -207,12 +216,12 @@ class _AppShellState extends State<AppShell> {
     if (navigator != null && await navigator.maybePop()) return;
     if (!mounted) return;
     final television = AppScope.of(context).television;
-    if (_tab == AppTab.explore && (!television || _headerFocused)) {
+    if (_tab == AppTab.home && (!television || _headerFocused)) {
       _armExit();
       return;
     }
-    if (_tab == AppTab.explore) _explore.currentState?.refresh();
-    _select(AppTab.explore);
+    if (_tab == AppTab.home) _home.currentState?.refresh();
+    _select(AppTab.home);
     if (television) _tabFocus.first.requestFocus();
   }
 
@@ -231,6 +240,12 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _root(AppTab tab) => switch (tab) {
+    AppTab.home => HomeFeedPage(
+      key: _home,
+      store: widget.store,
+      entryFocus: _homeEntry,
+      onExitUp: _tabFocus[AppTab.home.index].requestFocus,
+    ),
     AppTab.explore => ExplorePage(key: _explore, store: widget.store),
     AppTab.follow => FollowPage(
       store: widget.store,
@@ -250,7 +265,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final stack = NotificationListener<NavigationNotification>(
+    final shellForeground = ModalRoute.of(context)?.isCurrent ?? true;
+    final pages = NotificationListener<NavigationNotification>(
       onNotification: (_) {
         setState(() {});
         return false;
@@ -259,41 +275,41 @@ class _AppShellState extends State<AppShell> {
         index: _tab.index,
         children: [
           for (final tab in AppTab.values)
-            _TabFade(
-              selected: tab == _tab,
-              child: HeroControllerScope(
-                controller: _heroes[tab.index],
-                child: Navigator(
-                  key: _navigators[tab.index],
-                  routeTraversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
-                  routeDirectionalTraversalEdgeBehavior:
-                      TraversalEdgeBehavior.parentScope,
-                  onGenerateInitialRoutes: (_, _) => [
-                    MaterialPageRoute<void>(
-                      builder: (_) => PrimaryScrollController(
-                        controller: _tabScrolls[tab.index],
-                        child: _root(tab),
+            ShellForeground(
+              foreground: shellForeground && tab == _tab,
+              child: _TabFade(
+                selected: tab == _tab,
+                child: HeroControllerScope(
+                  controller: _heroes[tab.index],
+                  child: Navigator(
+                    key: _navigators[tab.index],
+                    routeTraversalEdgeBehavior:
+                        TraversalEdgeBehavior.parentScope,
+                    routeDirectionalTraversalEdgeBehavior:
+                        TraversalEdgeBehavior.parentScope,
+                    onGenerateInitialRoutes: (_, _) => [
+                      MaterialPageRoute<void>(
+                        builder: (_) => PrimaryScrollController(
+                          controller: _tabScrolls[tab.index],
+                          child: _root(tab),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
         ],
       ),
     );
-    final pages = ShellForeground(
-      foreground: ModalRoute.of(context)?.isCurrent ?? true,
-      child: stack,
-    );
     final television = AppScope.of(context).television;
     final tabs = _tabs;
-    if (!tabs.contains(_tab)) _tab = AppTab.explore;
+    if (!tabs.contains(_tab)) _tab = AppTab.home;
     final covered = _navigator?.canPop() ?? false;
     return PopScope(
       canPop:
           _exitWindow != null &&
-          _tab == AppTab.explore &&
+          _tab == AppTab.home &&
           !covered &&
           (!television || _headerFocused),
       onPopInvokedWithResult: (didPop, _) {
@@ -339,6 +355,7 @@ class _AppShellState extends State<AppShell> {
                           setState(() => _headerFocused = focused),
                       onKeyEvent: (_, event) {
                         final entry = switch (_tab) {
+                          AppTab.home => _homeEntry,
                           AppTab.follow => _followEntry,
                           AppTab.mine => _mineEntry,
                           AppTab.explore || AppTab.history => null,
@@ -733,7 +750,7 @@ class _TelevisionTab extends StatelessWidget {
         child: InkWell(
           key: ValueKey('nav-${tab.name}'),
           focusNode: focusNode,
-          autofocus: tab == AppTab.explore,
+          autofocus: tab == AppTab.home,
           focusColor: Colors.transparent,
           onTap: onTap,
           child: Container(
