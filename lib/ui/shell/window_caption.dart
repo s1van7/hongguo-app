@@ -92,26 +92,29 @@ class _WindowCaptionBarState extends State<WindowCaptionBar>
         children: [
           Expanded(
             child: DragToMoveArea(
-              child: Row(
-                children: [
-                  if (!widget.overlay) ...[
-                    const SizedBox(width: 14),
-                    Icon(
-                      Icons.movie_filter_rounded,
-                      size: 15,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      appName,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: foreground.withValues(alpha: .78),
+              child: SizedBox(
+                height: kAppCaptionHeight,
+                child: Row(
+                  children: [
+                    if (!widget.overlay) ...[
+                      const SizedBox(width: 14),
+                      Icon(
+                        Icons.movie_filter_rounded,
+                        size: 15,
+                        color: theme.colorScheme.primary,
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        appName,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: foreground.withValues(alpha: .78),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
