@@ -334,7 +334,7 @@ class _AppShellState extends State<AppShell> {
                   ],
                 ),
         ),
-        FormFactor.pad || FormFactor.window => _wide(pages),
+        FormFactor.pad || FormFactor.window => _wide(pages, covered),
         FormFactor.television => Scaffold(
           body: SafeArea(
             child: Column(
@@ -414,31 +414,42 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _wide(Widget pages) {
+  Widget _wide(Widget pages, bool covered) {
     final roomy = MediaQuery.sizeOf(context).width >= 840;
-    final expanded = roomy && widget.store.sideBarExpanded;
+    // 首页信息流是沉浸式的：画面铺满整个窗口，侧栏浮在上面
+    final immersive = _tab == AppTab.home && !covered;
+    final expanded = roomy && widget.store.sideBarExpanded && !immersive;
+    final side = _SideBar(
+      tabs: _tabs,
+      selected: _tab,
+      expanded: expanded,
+      overlay: immersive,
+      badged: _badged,
+      onSelect: _tap,
+      onToggle: roomy && !immersive
+          ? () => widget.store.setSideBarExpanded(!expanded)
+          : null,
+    );
+    final body = RepaintBoundary(
+      child: MediaQuery.removePadding(
+        context: context,
+        removeLeft: true,
+        child: pages,
+      ),
+    );
+    if (!immersive) {
+      return Scaffold(
+        body: Row(
+          children: [side, Expanded(child: body)],
+        ),
+      );
+    }
     return Scaffold(
-      body: Row(
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
-          _SideBar(
-            tabs: _tabs,
-            selected: _tab,
-            expanded: expanded,
-            badged: _badged,
-            onSelect: _tap,
-            onToggle: roomy
-                ? () => widget.store.setSideBarExpanded(!expanded)
-                : null,
-          ),
-          Expanded(
-            child: RepaintBoundary(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeLeft: true,
-                child: pages,
-              ),
-            ),
-          ),
+          Positioned.fill(child: body),
+          Positioned(left: 0, top: 0, bottom: 0, child: side),
         ],
       ),
     );
@@ -504,6 +515,7 @@ class _SideBar extends StatefulWidget {
     required this.badged,
     required this.onSelect,
     this.onToggle,
+    this.overlay = false,
   });
   final List<AppTab> tabs;
   final AppTab selected;
@@ -511,6 +523,9 @@ class _SideBar extends StatefulWidget {
   final Widget Function(AppTab tab, Widget icon) badged;
   final ValueChanged<AppTab> onSelect;
   final VoidCallback? onToggle;
+
+  /// 沉浸模式：侧栏不再占位、背景透明，直接浮在视频画面上。
+  final bool overlay;
 
   @override
   State<_SideBar> createState() => _SideBarState();
@@ -531,7 +546,9 @@ class _SideBarState extends State<_SideBar> {
     final onToggle = widget.onToggle;
     final metrics = _sideMetrics(desktop: desktop, expanded: expanded);
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainer,
+      color: widget.overlay
+          ? Colors.transparent
+          : Theme.of(context).colorScheme.surfaceContainer,
       child: SafeArea(
         right: false,
         child: AnimatedContainer(
@@ -576,6 +593,7 @@ class _SideBarState extends State<_SideBar> {
                     tab: tab,
                     selected: tab == widget.selected,
                     expanded: expanded,
+                    overlay: widget.overlay,
                     metrics: metrics,
                     badged: widget.badged,
                     onTap: () => widget.onSelect(tab),
@@ -597,10 +615,12 @@ class _SideItem extends StatelessWidget {
     required this.metrics,
     required this.badged,
     required this.onTap,
+    this.overlay = false,
   });
   final AppTab tab;
   final bool selected;
   final bool expanded;
+  final bool overlay;
   final _SideMetrics metrics;
   final Widget Function(AppTab tab, Widget icon) badged;
   final VoidCallback onTap;
@@ -609,9 +629,9 @@ class _SideItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final color = selected
-        ? colors.onSecondaryContainer
-        : colors.onSurfaceVariant;
+    final color = overlay
+        ? (selected ? Colors.white : Colors.white.withValues(alpha: .82))
+        : (selected ? colors.onSecondaryContainer : colors.onSurfaceVariant);
     final icon = badged(
       tab,
       ToggleIconSwitcher(
@@ -620,6 +640,9 @@ class _SideItem extends StatelessWidget {
           key: ValueKey(selected),
           color: color,
           size: metrics.iconSize,
+          shadows: overlay
+              ? const [Shadow(color: Colors.black87, blurRadius: 10)]
+              : null,
         ),
       ),
     );
@@ -630,7 +653,11 @@ class _SideItem extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: ShapeDecoration(
         shape: const StadiumBorder(),
-        color: selected ? colors.secondaryContainer : Colors.transparent,
+        color: selected
+            ? (overlay
+                  ? Colors.white.withValues(alpha: .24)
+                  : colors.secondaryContainer)
+            : Colors.transparent,
       ),
       child: Material(
         type: MaterialType.transparency,

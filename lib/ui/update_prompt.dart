@@ -139,6 +139,7 @@ class _SourceTile extends StatelessWidget {
     UpdateSourceKind.mirror => Icons.bolt_rounded,
     UpdateSourceKind.selfHosted => Icons.dns_rounded,
     UpdateSourceKind.github => Icons.code_rounded,
+    UpdateSourceKind.netdisk => Icons.cloud_outlined,
     UpdateSourceKind.page => Icons.open_in_new_rounded,
   };
 

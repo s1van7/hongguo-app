@@ -101,6 +101,8 @@ class PlaybackSession extends ChangeNotifier {
       stream.playing.listen((playing) {
         if (!playing) endBoost();
         _sync();
+        // 播放/暂停要立刻刷新界面，否则暂停角标会一直挂着
+        _notify();
       }),
       stream.buffering.listen((buffering) {
         _buffering(buffering);

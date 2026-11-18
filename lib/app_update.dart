@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// 下载来源：同一个版本可以有多个来源，让用户自己挑。
-enum UpdateSourceKind { mirror, selfHosted, github, page }
+enum UpdateSourceKind { mirror, selfHosted, github, netdisk, page }
 
 class UpdateSource {
   const UpdateSource({
@@ -148,6 +148,12 @@ List<UpdateSource> _manifestSources(Map json) {
   add(UpdateSourceKind.mirror, '加速下载', 'GitHub 镜像，通常最快', map['mirror']);
   add(UpdateSourceKind.selfHosted, '自建下载', '走你的服务器，稳定但带宽有限', map['url']);
   add(UpdateSourceKind.github, 'GitHub 下载', '需要能直连 github.com', map['github']);
+  add(
+    UpdateSourceKind.netdisk,
+    '网盘下载',
+    '蓝奏云，浏览器打开即可下载',
+    map['lanzou'],
+  );
   if (sources.isEmpty) {
     add(UpdateSourceKind.selfHosted, '下载', '打开下载地址', json['url']);
   }

@@ -23,6 +23,12 @@ import '../widgets/cover_image.dart';
 import '../widgets/follow_button.dart';
 import '../widgets/status_view.dart';
 
+/// 桌面/平板外壳把侧栏浮在画面之上，这里给它留出位置。
+double _railInsetOf(BuildContext context) {
+  final form = AppScope.formFactorOf(context);
+  return form == FormFactor.window || form == FormFactor.pad ? 74 : 0;
+}
+
 class HomeFeedPage extends StatefulWidget {
   const HomeFeedPage({
     super.key,
@@ -748,9 +754,9 @@ class HomeFeedPageState extends State<HomeFeedPage>
             // 桌面端没有触摸，给一对上/下按钮，放在右下角，避开右侧功能栏
             if (_isDesktop)
               Positioned(
-                right: 12,
-                bottom: 18,
-                child: Row(
+                right: 8,
+                bottom: 14,
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   spacing: 8,
                   children: [
@@ -790,7 +796,12 @@ class HomeFeedPageState extends State<HomeFeedPage>
                     child: SizedBox(
                       height: 50,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        padding: EdgeInsets.fromLTRB(
+                          12 + _railInsetOf(context),
+                          0,
+                          12,
+                          0,
+                        ),
                         child: Row(
                           spacing: 8,
                           children: [
@@ -1192,7 +1203,7 @@ class _FeedSlideState extends State<_FeedSlide> {
           right: 10,
           width: 76,
           top: 64,
-          bottom: 112,
+          bottom: 124,
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.bottomCenter,
@@ -1246,7 +1257,7 @@ class _FeedSlideState extends State<_FeedSlide> {
           ),
         ),
         Positioned(
-          left: 14,
+          left: 14 + _railInsetOf(context),
           right: 72,
           bottom: 18,
           child: Column(
