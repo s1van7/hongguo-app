@@ -74,7 +74,9 @@ Future<AppUpdate?> fetchLatestRelease(
   } on AppUpdateFailure {
     // 自建更新服务不可用时退回 GitHub
   }
-  final tag = await _tagFromRedirect(timeout) ?? await _tagFromApi(timeout);
+  // 清单已经应答过说明网络没问题，GitHub 只是复核，没必要等满 8 秒
+  final fallback = manifestReached ? const Duration(seconds: 3) : timeout;
+  final tag = await _tagFromRedirect(fallback) ?? await _tagFromApi(fallback);
   if (tag == null) {
     if (manifestReached) return null;
     throw const AppUpdateFailure('连不上更新服务，请检查网络');
@@ -97,8 +99,9 @@ Future<AppUpdate?> fetchLatestRelease(
 Future<AppUpdate?> _fromManifest(Duration timeout) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
+    final stamp = DateTime.now().millisecondsSinceEpoch;
     final request = await client
-        .getUrl(Uri.parse(_manifestUrl))
+        .getUrl(Uri.parse('$_manifestUrl?t=$stamp'))
         .timeout(timeout);
     request.headers
       ..set(HttpHeaders.userAgentHeader, 'yingyu-app')

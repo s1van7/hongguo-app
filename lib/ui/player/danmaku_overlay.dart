@@ -145,7 +145,10 @@ class DanmakuOverlay extends StatelessWidget {
           final rows = ((height * style.coverage.fraction - 8) / rowHeight)
               .floor()
               .clamp(0, danmakuMaxRows);
-          return Center(
+          return Align(
+            alignment: videoSitsAtBottom(box, Size(width, height))
+                ? Alignment.bottomCenter
+                : Alignment.center,
             child: SizedBox(
               width: width,
               height: height,

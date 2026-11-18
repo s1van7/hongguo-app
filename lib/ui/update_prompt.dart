@@ -77,8 +77,8 @@ Future<_UpdateChoice?> _askUpdate(
       title: Text('发现新版本 ${update.version}'),
       content: Text(
         manual
-            ? '当前版本 $current。点「去下载」打开 GitHub 发布页，下载后覆盖安装即可，数据不会丢。'
-            : '当前版本 $current。点「去下载」打开 GitHub 发布页，下载后覆盖安装即可，数据不会丢。\n\n选「不再提醒」后可在 设置 › 关于 里重新打开启动检查。',
+            ? '当前版本 $current。点「去下载」直接下载安装包，装完覆盖安装即可，数据不会丢。'
+            : '当前版本 $current。点「去下载」直接下载安装包，装完覆盖安装即可，数据不会丢。\n\n选「不再提醒」后可在 设置 › 关于 里重新打开启动检查。',
       ),
       actions: [
         for (final (choice, label) in [
