@@ -70,6 +70,7 @@ class HomeFeedPageState extends State<HomeFeedPage>
   int _catalogPage = 1;
   bool _hasMore = true;
   bool _initialLoading = true;
+  bool _refreshing = false;
   bool _loadingMore = false;
   String? _feedError;
 
@@ -203,8 +204,12 @@ class HomeFeedPageState extends State<HomeFeedPage>
       return;
     }
 
+    // 已经有内容时刷新不清屏：先留着当前这屏，等新推荐回来再整体换掉，
+    // 只在顶部给一条细进度条，避免每次点首页都闪一下黑屏。
+    final keepVisible = force && _items.isNotEmpty;
     setState(() {
-      _initialLoading = true;
+      _initialLoading = !keepVisible;
+      _refreshing = keepVisible;
       _loadingMore = false;
       _feedError = null;
       _activeDetailError = null;
@@ -235,15 +240,25 @@ class HomeFeedPageState extends State<HomeFeedPage>
       _hasMore =
           page.hasMore ||
           (SourceSite.byId(_sourceId).recommends && _items.isNotEmpty);
-      setState(() => _initialLoading = false);
+      setState(() {
+        _initialLoading = false;
+        _refreshing = false;
+      });
       if (_pageController.hasClients) _pageController.jumpToPage(0);
       if (_items.isNotEmpty) _scheduleActivate(0, immediate: true);
     } catch (e) {
       if (!mounted || epoch != _feedEpoch) return;
+      final message = _errorMessage(e);
       setState(() {
         _initialLoading = false;
-        _feedError = _errorMessage(e);
+        _refreshing = false;
+        _feedError = message;
       });
+      if (_items.isNotEmpty) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text('刷新推荐失败：$message')));
+      }
     }
   }
 
@@ -930,7 +945,7 @@ class HomeFeedPageState extends State<HomeFeedPage>
         child: StatusView(title: '暂无推荐视频', action: '刷新', onAction: refresh),
       );
     }
-    return Listener(
+    final feed = Listener(
       onPointerSignal: _onPointerSignal,
       child: RefreshIndicator(
         onRefresh: refresh,
@@ -997,6 +1012,19 @@ class HomeFeedPageState extends State<HomeFeedPage>
           ),
         ),
       ),
+    );
+    // 刷新推荐时只在顶部给一条细进度条，画面保持不动
+    return Stack(
+      children: [
+        Positioned.fill(child: feed),
+        if (_refreshing)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+      ],
     );
   }
 }

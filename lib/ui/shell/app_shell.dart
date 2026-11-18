@@ -173,7 +173,12 @@ class _AppShellState extends State<AppShell> {
   void _select(AppTab tab) => setState(() => _tab = tab);
 
   void _tap(AppTab tab) {
-    if (tab != _tab) return _select(tab);
+    if (tab != _tab) {
+      _select(tab);
+      // 切回首页也换一批新的推荐，免得每次看到的都是同一屏
+      if (tab == AppTab.home) _home.currentState?.reselect();
+      return;
+    }
     final navigator = _navigator;
     if (navigator != null && navigator.canPop()) {
       return navigator.popUntil((route) => route.isFirst);
