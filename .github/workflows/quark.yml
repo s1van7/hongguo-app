@@ -1,0 +1,83 @@
+name: 同步到夸克网盘
+
+on:
+  workflow_run:
+    workflows: ["构建影屿"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要上传的版本号，例如 1.1.3；留空则取最新 release'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quark-upload
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet requests playwright
+          python -m playwright install --with-deps chromium
+
+      - name: 解析版本
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ]; then
+            tag=$(gh release view --json tagName -q .tagName)
+            version="${tag#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "要上传的版本：$version"
+
+      - name: 下载安装包
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p stage
+          gh release download "v$version" \
+            --pattern "yingyu-$version-arm64-v8a.apk" \
+            --pattern "yingyu-$version-windows-x64-setup.exe" \
+            --dir stage --clobber
+          for f in stage/yingyu-*; do
+            mv "$f" "stage/$(basename "$f" | sed 's/^yingyu-/影屿-/')"
+          done
+          ls -l stage
+
+      - name: 上传到夸克网盘
+        env:
+          QUARK_STATE: ${{ secrets.QUARK_STATE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$QUARK_STATE" ]; then
+            echo "没有配置 QUARK_STATE 密钥，跳过上传"
+            exit 0
+          fi
+          printf '%s' "$QUARK_STATE" > /tmp/quark-state.json
+          python scripts/quark_upload.py \
+            --state /tmp/quark-state.json \
+            --folder ec6435a6d00a4825bcf52d779da1b493 \
+            stage/*
