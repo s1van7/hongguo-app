@@ -21,6 +21,14 @@ class UpdateSource {
   final String url;
 }
 
+/// GitHub Release 上的一个产物文件。
+class ReleaseAsset {
+  const ReleaseAsset({required this.name, required this.url});
+
+  final String name;
+  final String url;
+}
+
 class AppUpdate {
   const AppUpdate({required this.version, required this.sources});
 
@@ -38,6 +46,9 @@ const _latestPage = 'https://github.com/$releaseRepository/releases/latest';
 const _manifestUrl = 'https://yy.s1van.top:8448/dl/latest.json';
 const _latestApi =
     'https://api.github.com/repos/$releaseRepository/releases/latest';
+
+/// GitHub 加速镜像前缀，和清单里 `mirror` 字段用的是同一家。
+const _mirrorPrefix = 'https://ghfast.top/';
 
 /// 当前版本，形如 `1.0.2`。构建号只用于安装覆盖，不再对外展示。
 Future<String> currentAppVersion() async {
@@ -84,21 +95,25 @@ Future<AppUpdate?> fetchLatestRelease(
   String current, {
   Duration timeout = const Duration(seconds: 8),
 }) async {
-  var manifestReached = false;
+  AppUpdate? hosted;
   try {
-    final hosted = await _fromManifest(timeout);
-    if (hosted != null) {
-      manifestReached = true;
-      if (compareVersions(hosted.version, current) > 0) {
-        return hosted;
-      }
-    }
+    hosted = await _fromManifest(timeout);
   } on AppUpdateFailure {
     // 自建更新服务不可用时退回 GitHub
   }
+  final manifestReached = hosted != null;
+  if (hosted != null && compareVersions(hosted.version, current) > 0) {
+    return hosted;
+  }
   // 清单已经应答过说明网络没问题，GitHub 只是复核，没必要等满 8 秒
   final fallback = manifestReached ? const Duration(seconds: 3) : timeout;
-  final tag = await _tagFromRedirect(fallback) ?? await _tagFromApi(fallback);
+  // 重定向能拿到 tag（国内往往比 api.github.com 好连），API 能拿到产物列表，
+  // 两个并发跑，谁也不拖谁。
+  final (redirectTag, release) = await (
+    _tagFromRedirect(fallback),
+    _releaseFromApi(fallback),
+  ).wait;
+  final tag = release?.tag ?? redirectTag;
   if (tag == null) {
     if (manifestReached) return null;
     throw const AppUpdateFailure('连不上更新服务，请检查网络');
@@ -111,15 +126,99 @@ Future<AppUpdate?> fetchLatestRelease(
   if (compareVersions(version, current) <= 0) return null;
   return AppUpdate(
     version: version,
-    sources: [
-      UpdateSource(
-        kind: UpdateSourceKind.page,
-        label: '打开 GitHub 发布页',
-        hint: '手动挑对应平台的安装包',
-        url: 'https://github.com/$releaseRepository/releases/tag/$tag',
-      ),
-    ],
+    sources: buildUpdateSources(
+      tag: tag,
+      version: version,
+      assets: release?.assets ?? const [],
+      manifest: hosted,
+    ),
   );
+}
+
+/// 汇总这一版能用的下载方式，顺序就是弹窗里的推荐顺序。
+///
+/// 清单还没跟上（或者干脆连不上）时，靠 GitHub 上的产物名拼出加速镜像和直连地址，
+/// 保证弹窗里始终有好几个来源可选，而不是只剩一个「打开 GitHub 发布页」。
+/// 清单版本和最终版本对不上时不掺和它的来源，免得把上一版的安装包当成新版给出去。
+List<UpdateSource> buildUpdateSources({
+  required String tag,
+  required String version,
+  List<ReleaseAsset> assets = const [],
+  AppUpdate? manifest,
+  String? platform,
+}) {
+  final sources = <UpdateSource>[];
+  void add(UpdateSource source) {
+    if (source.url.isEmpty) return;
+    if (sources.any((s) => s.url == source.url)) return;
+    sources.add(source);
+  }
+
+  final asset = _pickAsset(assets, platform ?? _platformKey);
+  if (asset != null) {
+    add(
+      UpdateSource(
+        kind: UpdateSourceKind.mirror,
+        label: '加速下载',
+        hint: 'GitHub 镜像，通常最快',
+        url: '$_mirrorPrefix${asset.url}',
+      ),
+    );
+    add(
+      UpdateSource(
+        kind: UpdateSourceKind.github,
+        label: 'GitHub 下载',
+        hint: '需要能直连 github.com',
+        url: asset.url,
+      ),
+    );
+  }
+  if (manifest != null && manifest.version == version) {
+    for (final source in manifest.sources) {
+      add(source);
+    }
+  }
+  add(
+    UpdateSource(
+      kind: UpdateSourceKind.page,
+      label: '打开 GitHub 发布页',
+      hint: '手动挑对应平台的安装包',
+      url: 'https://github.com/$releaseRepository/releases/tag/$tag',
+    ),
+  );
+  return sources;
+}
+
+/// 按产物命名挑出当前平台的安装包。
+///
+/// Android 同一版有多个 ABI，优先 64 位；Windows 优先安装版而不是便携压缩包。
+ReleaseAsset? _pickAsset(List<ReleaseAsset> assets, String platform) {
+  final wanted = switch (platform) {
+    'windows' => const ['.exe'],
+    'android' => const ['.apk'],
+    'macos' => const ['.dmg', '.zip'],
+    'linux' => const ['.tar.gz', '.appimage'],
+    'ios' => const ['.ipa'],
+    _ => const <String>[],
+  };
+  if (wanted.isEmpty) return null;
+  final found = assets
+      .where(
+        (asset) => wanted.any((ext) => asset.name.toLowerCase().endsWith(ext)),
+      )
+      .toList();
+  if (found.isEmpty) return null;
+  if (platform == 'android') {
+    for (final abi in const ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
+      final hit = found.where((asset) => asset.name.contains(abi));
+      if (hit.isNotEmpty) return hit.first;
+    }
+  }
+  if (platform == 'windows') {
+    final setup = found.where((asset) => asset.name.contains('setup'));
+    if (setup.isNotEmpty) return setup.first;
+  }
+  return found.first;
 }
 
 /// 清单里的平台键：Windows 取 exe，Android 取 apk。
@@ -212,7 +311,9 @@ Future<String?> _tagFromRedirect(Duration timeout) async {
   }
 }
 
-Future<String?> _tagFromApi(Duration timeout) async {
+Future<({String tag, List<ReleaseAsset> assets})?> _releaseFromApi(
+  Duration timeout,
+) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
     final request = await client.getUrl(Uri.parse(_latestApi)).timeout(timeout);
@@ -225,7 +326,19 @@ Future<String?> _tagFromApi(Duration timeout) async {
     final decoded = jsonDecode(body);
     if (decoded is! Map) return null;
     final tag = decoded['tag_name'];
-    return tag is String ? tag : null;
+    if (tag is! String) return null;
+    final assets = <ReleaseAsset>[];
+    if (decoded['assets'] case final List list) {
+      for (final item in list) {
+        if (item is! Map) continue;
+        final name = item['name'];
+        final url = item['browser_download_url'];
+        if (name is String && url is String && url.isNotEmpty) {
+          assets.add(ReleaseAsset(name: name, url: url));
+        }
+      }
+    }
+    return (tag: tag, assets: assets);
   } catch (_) {
     return null;
   } finally {
