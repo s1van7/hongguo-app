@@ -10,8 +10,9 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
-  ::CreateMutexW(nullptr, FALSE, APP_MUTEX_NAME);
-  if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+  ::SetLastError(0);
+  HANDLE mutex = ::CreateMutexW(nullptr, FALSE, APP_MUTEX_NAME);
+  if (mutex != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
     HWND existing =
         ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", APP_WINDOW_TITLE);
     if (existing != nullptr) {
@@ -19,8 +20,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
         ::ShowWindow(existing, SW_RESTORE);
       }
       ::SetForegroundWindow(existing);
+      return EXIT_SUCCESS;
     }
-    return EXIT_SUCCESS;
+    // 互斥量还在、窗口却找不到：上一个进程已经成了僵尸（崩溃或更新时留下的），
+    // 这种情况不能再直接退出，否则用户看到的就是「点开闪一下就没了」。
   }
 
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -57,6 +60,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                                 center(work.top, work.bottom, size.height));
   }
   if (!window.Create(APP_WINDOW_TITLE, origin, size)) {
+    // 别静默退出：闪退最难查的就是什么都不提示
+    ::MessageBoxW(nullptr,
+                  L"窗口创建失败，请重新安装影屿，或改用便携版（解压后运行）。",
+                  APP_WINDOW_TITLE, MB_ICONERROR | MB_OK);
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

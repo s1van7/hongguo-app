@@ -9,6 +9,14 @@ VersionInfoVersion={#NumericVersion}
 AppMutex={#AppId}
 DefaultDirName={autopf}\{#AppId}
 DisableProgramGroupPage=yes
+; 目录固定：升级时沿用上次的安装位置，不再让用户（或 {autopf} 的变化）改到别处
+DisableDirPage=yes
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
+; 更新前先把正在运行的旧版本关掉，避免文件被占用后装成半新半旧
+CloseApplications=yes
+CloseApplicationsFilter=*.exe,*.dll
+RestartApplications=no
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
@@ -42,7 +50,10 @@ Source: "{#SourceDir}\{#BundleExecutable}"; DestDir: "{app}"; DestName: "{#Execu
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#ExecutableName}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExecutableName}"; Tasks: desktopicon
+; 桌面图标改到 [Code] 里「没有才建」，免得每次升级重写快捷方式、图标位置乱跳
+
+[UninstallDelete]
+Type: files; Name: "{autodesktop}\{#AppName}.lnk"
 
 [Run]
 Filename: "{app}\{#ExecutableName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -50,6 +61,38 @@ Filename: "{app}\{#ExecutableName}"; Description: "{cm:LaunchProgram,{#StringCha
 [Code]
 var
   DeleteLocalData: Boolean;
+
+/// 桌面快捷方式只在不存在时创建：重写 .lnk 会让 Windows 忘掉图标位置，
+/// 用户每次升级都会发现图标跑到别处去了。
+procedure EnsureDesktopShortcut();
+var
+  LinkPath, Target: String;
+  Shell, Shortcut: Variant;
+begin
+  if not WizardIsTaskSelected('desktopicon') then
+    Exit;
+  LinkPath := ExpandConstant('{autodesktop}\{#AppName}.lnk');
+  if FileExists(LinkPath) then
+    Exit;
+  Target := ExpandConstant('{app}\{#ExecutableName}');
+  try
+    Shell := CreateOleObject('WScript.Shell');
+    Shortcut := Shell.CreateShortcut(LinkPath);
+    Shortcut.TargetPath := Target;
+    Shortcut.WorkingDirectory := ExpandConstant('{app}');
+    Shortcut.IconLocation := Target + ',0';
+    Shortcut.Description := '{#AppName}';
+    Shortcut.Save;
+  except
+    Log('创建桌面快捷方式失败：' + LinkPath);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    EnsureDesktopShortcut();
+end;
 
 procedure InitializeUninstallProgressForm();
 var
