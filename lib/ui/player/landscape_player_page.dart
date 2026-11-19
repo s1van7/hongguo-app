@@ -257,7 +257,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       }
       return;
     }
-    _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
+    // 控制条藏着的时候，点一下立刻冒出来，不用等双击判定完
+    final hidden = !_visible;
+    if (hidden) _show();
+    _tapTimer = Timer(
+      const Duration(milliseconds: 300),
+      hidden ? () {} : _toggleControls,
+    );
   }
 
   void _startStreak(int side) {

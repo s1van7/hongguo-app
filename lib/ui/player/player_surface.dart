@@ -240,7 +240,13 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
       }
       return;
     }
-    _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
+    // 控制条藏着的时候，点一下立刻冒出来，不用等双击判定完
+    final hidden = !_visible;
+    if (hidden) _show();
+    _tapTimer = Timer(
+      const Duration(milliseconds: 300),
+      hidden ? () {} : _toggleControls,
+    );
   }
 
   void _wheel(PointerSignalEvent event) {
@@ -344,7 +350,11 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
       final visible = _controlsVisible;
       final popup = visible ? _popup : null;
       return MouseRegion(
-        onHover: (_) => _movePointer(),
+        // 鼠标移到画面任意位置都能唤出控制条，不用非得够到底部
+        onHover: (_) {
+          _movePointer();
+          if (!_visible) _show();
+        },
         cursor: visible || _pointer
             ? MouseCursor.defer
             : SystemMouseCursors.none,
@@ -436,6 +446,36 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 },
               ),
             ),
+            // 顶部同样留一条感应带：从窗口上沿进来也能直接唤出控制条
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 80,
+              child: MouseRegion(
+                hitTestBehavior: HitTestBehavior.translucent,
+                onEnter: (_) => _show(),
+                onHover: (_) => _show(),
+              ),
+            ),
+            // 全屏时返回键常驻：控制条淡出以后也一直在
+            if (widget.fullscreen)
+              Positioned(
+                left: 12,
+                top: 12,
+                child: Material(
+                  color: Colors.black.withValues(alpha: .32),
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: _icon(
+                    Icons.arrow_back_rounded,
+                    '退出全屏',
+                    widget.onFullscreen,
+                    size: 40,
+                    iconSize: 22,
+                  ),
+                ),
+              ),
             if (popup != null && widget.touch)
               GestureDetector(behavior: HitTestBehavior.opaque, onTap: _close),
             if (popup != null)
@@ -643,13 +683,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 _toolbar(context, position, constraints.maxWidth),
           ),
         ),
-        // 全屏时左上角留一个返回键，退出全屏
-        if (widget.fullscreen)
-          Positioned(
-            left: 12,
-            top: 12,
-            child: _icon(Icons.arrow_back_rounded, '退出全屏', widget.onFullscreen),
-          ),
+        // 全屏返回键常驻在控制条外面，这里不再重复放一个
         if (widget.fullscreen &&
             (_session.preferences.showClock ||
                 _session.preferences.showNetworkSpeed))

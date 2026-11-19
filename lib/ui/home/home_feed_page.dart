@@ -17,6 +17,7 @@ import '../detail/detail_page.dart';
 import '../explore/source_actions.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
+import '../player/player_surface.dart' show formatClock;
 import '../player/player_video.dart';
 import '../shell/app_shell.dart';
 import '../shell/window_caption.dart';
@@ -1323,7 +1324,7 @@ class _FeedSlideState extends State<_FeedSlide> {
         Positioned(
           left: 14 + _railInsetOf(context),
           right: 14,
-          bottom: 16 + MediaQuery.paddingOf(context).bottom,
+          bottom: 56 + MediaQuery.paddingOf(context).bottom,
           child: ConstrainedBox(
             // 宽屏不要把整条拉满，手机上自动占满可用宽度
             constraints: const BoxConstraints(maxWidth: 460),
@@ -1417,11 +1418,12 @@ class _FeedSlideState extends State<_FeedSlide> {
             ),
           ),
         ),
+        // 进度条：整条铺满，点哪儿跳哪儿，也能拖着走，悬停/拖动时上方冒时间
         Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _ProgressBar(
+          left: 14 + _railInsetOf(context),
+          right: 14,
+          bottom: 8 + MediaQuery.paddingOf(context).bottom,
+          child: _FeedProgress(
             player: session?.player,
             session: session,
             loading: widget.resolving || (session?.loading ?? true),
@@ -1468,8 +1470,9 @@ class _RailBtn extends StatelessWidget {
   }
 }
 
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({
+/// 首页进度条：点哪儿跳哪儿、按住能拖，悬停/拖动时在上方冒一个时间气泡。
+class _FeedProgress extends StatefulWidget {
+  const _FeedProgress({
     required this.player,
     required this.session,
     required this.loading,
@@ -1479,46 +1482,183 @@ class _ProgressBar extends StatelessWidget {
   final bool loading;
 
   @override
+  State<_FeedProgress> createState() => _FeedProgressState();
+}
+
+class _FeedProgressState extends State<_FeedProgress> {
+  double? _previewMs;
+  bool _hover = false;
+  Timer? _previewTimer;
+
+  @override
+  void dispose() {
+    _previewTimer?.cancel();
+    super.dispose();
+  }
+
+  void _holdPreview(double ms) {
+    _previewTimer?.cancel();
+    if (_previewMs != ms) setState(() => _previewMs = ms);
+  }
+
+  void _releasePreview() {
+    _previewTimer?.cancel();
+    _previewTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _previewMs = null);
+    });
+  }
+
+  void _seekTo(double ms) {
+    final session = widget.session;
+    if (session == null) return;
+    unawaited(session.seekTo(Duration(milliseconds: ms.round())));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (player == null || loading) {
-      return const LinearProgressIndicator(
-        minHeight: 2,
-        backgroundColor: Colors.white12,
-        valueColor: AlwaysStoppedAnimation(Color(0xFFFF4D4F)),
+    final player = widget.player;
+    if (player == null || widget.loading) {
+      return const SizedBox(
+        height: 32,
+        child: Center(
+          child: LinearProgressIndicator(
+            minHeight: 2.5,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation(Color(0xFFFF4D4F)),
+          ),
+        ),
       );
     }
     return StreamBuilder<Duration>(
-      stream: player!.stream.position,
-      initialData: player!.state.position,
+      stream: player.stream.position,
+      initialData: player.state.position,
       builder: (context, snap) {
-        final total = player!.state.duration.inMilliseconds;
-        if (total <= 0) return const SizedBox(height: 2);
-        final ratio = ((snap.data?.inMilliseconds ?? 0) / total).clamp(
-          0.0,
-          1.0,
-        );
+        final total = player.state.duration.inMilliseconds;
+        if (total <= 0) return const SizedBox(height: 32);
+        final current =
+            _previewMs ?? snap.data?.inMilliseconds.toDouble() ?? 0.0;
+        final ratio = (current / total).clamp(0.0, 1.0);
+        final active = _hover || _previewMs != null;
         return LayoutBuilder(
-          builder: (_, box) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) {
-              final ms =
-                  (total * (d.localPosition.dx / box.maxWidth).clamp(0.0, 1.0))
-                      .round();
-              unawaited(session?.seekTo(Duration(milliseconds: ms)));
-            },
-            child: SizedBox(
-              height: 10,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: LinearProgressIndicator(
-                  minHeight: 2.5,
-                  value: ratio,
-                  backgroundColor: Colors.white24,
-                  valueColor: const AlwaysStoppedAnimation(Colors.white),
+          builder: (context, box) {
+            final width = box.maxWidth;
+            double? seekAt(double dx) {
+              if (width <= 0 || total <= 0) return null;
+              return (dx / width).clamp(0.0, 1.0) * total;
+            }
+
+            return MouseRegion(
+              onEnter: (_) => setState(() => _hover = true),
+              onExit: (_) => setState(() => _hover = false),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) {
+                  final ms = seekAt(d.localPosition.dx);
+                  if (ms == null) return;
+                  _holdPreview(ms);
+                  _seekTo(ms);
+                  _releasePreview();
+                },
+                onHorizontalDragStart: (d) {
+                  final ms = seekAt(d.localPosition.dx);
+                  if (ms != null) _holdPreview(ms);
+                },
+                onHorizontalDragUpdate: (d) {
+                  final ms = seekAt(d.localPosition.dx);
+                  if (ms != null) _holdPreview(ms);
+                },
+                onHorizontalDragEnd: (_) {
+                  final ms = _previewMs;
+                  if (ms != null) _seekTo(ms);
+                  _releasePreview();
+                },
+                onHorizontalDragCancel: _releasePreview,
+                child: SizedBox(
+                  height: 32,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 14,
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        width: width * ratio,
+                        top: 14,
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment(ratio * 2 - 1, 0),
+                        child: Container(
+                          width: active ? 14 : 9,
+                          height: active ? 14 : 9,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x66000000),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (active)
+                        Positioned(
+                          left: (width * ratio - 58).clamp(
+                            0.0,
+                            width > 116 ? width - 116 : 0.0,
+                          ),
+                          bottom: 30,
+                          width: width > 116 ? 116 : width,
+                          child: IgnorePointer(
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: .62),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${formatClock(Duration(milliseconds: current.round()))} / ${formatClock(Duration(milliseconds: total))}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

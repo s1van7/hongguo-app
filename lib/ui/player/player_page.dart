@@ -19,7 +19,7 @@ import 'playback_handle.dart';
 import 'player_surface.dart';
 import 'window_fullscreen.dart';
 
-const _panelWidth = 360.0;
+const _panelWidth = 320.0;
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
@@ -50,6 +50,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   bool _windowFullscreen = false;
   bool _seekHeld = false;
   bool _selecting = false;
+  bool _drawer = false;
 
   PlaybackSession get _playback => widget.handle.session;
   Drama get _drama => _playback.detail.drama;
@@ -115,11 +116,24 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       unawaited(_toggleFullscreen());
     } else if (_selecting) {
       _endSelection();
+    } else if (_drawer) {
+      setState(() => _drawer = false);
+      _focus.requestFocus();
     } else if (_wide) {
       _toggleWide();
     } else {
       unawaited(Navigator.maybePop(context));
     }
+  }
+
+  /// 选集浮层：画面永远是最大的，选集需要时再滑出来盖住右侧。
+  void _toggleDrawer() {
+    if (!_roomy) {
+      unawaited(_showEpisodes());
+      return;
+    }
+    setState(() => _drawer = !_drawer);
+    _focus.requestFocus();
   }
 
   void _startSelection() {
@@ -264,20 +278,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             onWide: _toggleWide,
             onVolume: (delta) => _volume(_playback.changeVolume(delta)),
             onMiniWindow: widget.onMiniWindow,
-            onEpisodes: () => unawaited(_showEpisodes()),
+            onEpisodes: _toggleDrawer,
             onSurface: _focus.requestFocus,
           ),
         ),
       ),
     );
-    final panel = _roomy && (!_wide || _selecting);
+    final drawer = _roomy && (_drawer || _selecting);
     // 沉浸式：侧栏与窗口按钮浮在画面上，页面整体铺满，顶部栏透明浮着
     final shell = shellVisibleFrom(context);
     final rail = _fullscreen || !shell ? 0.0 : railInsetOf(context);
     final caption = _fullscreen ? 0.0 : captionInset;
     return ImmersivePage(
       child: PopScope(
-        canPop: !_fullscreen && !_selecting && !_wide,
+        canPop: !_fullscreen && !_selecting && !_wide && !_drawer,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _back();
         },
@@ -301,38 +315,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                           : Builder(
                               builder: (context) => ListenableBuilder(
                                 listenable: _playback,
-                                builder: (context, _) => Column(
-                                  children: [
-                                    SizedBox(height: caption),
-                                    Padding(
-                                      padding: EdgeInsets.only(left: rail),
-                                      child: _header(context),
-                                    ),
-                                    Expanded(
-                                      child: Padding(
-                                        padding: EdgeInsets.fromLTRB(
-                                          rail + 16,
-                                          0,
-                                          16,
-                                          16,
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            Expanded(child: surface),
-                                            if (panel) ...[
-                                              const SizedBox(width: 16),
-                                              SizedBox(
-                                                width: _panelWidth,
-                                                child: _panel(context),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
+                                builder: (context, _) => Padding(
+                                  // 画面直接铺满窗口，标题栏浮在上面，选集按需滑出
+                                  padding: EdgeInsets.fromLTRB(
+                                    rail + 12,
+                                    12 + caption,
+                                    12,
+                                    12,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(child: surface),
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        top: 0,
+                                        child: _header(context),
                                       ),
-                                    ),
-                                  ],
+                                      if (drawer)
+                                        Positioned(
+                                          top: 0,
+                                          right: 0,
+                                          bottom: 0,
+                                          width: _panelWidth,
+                                          child: _panel(context),
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -427,85 +436,151 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Widget _header(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 64,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 16, 0),
-        child: Row(
-          spacing: 8,
-          children: [
-            IconButton(
-              onPressed: _back,
-              icon: const Icon(Icons.arrow_back_rounded),
-              color: Colors.white,
-              style: IconButton.styleFrom(fixedSize: const Size.square(44)),
-            ),
-            Expanded(
-              child: Text(
-                '${_drama.title} · 第 ${_playback.episode.number} 集',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            if (_selecting) ...[
-              Text(
-                '已选 ${_selected.length} 集',
-                style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
-              ),
-              TextButton(onPressed: _endSelection, child: const Text('取消')),
-              TextButton(
-                onPressed: () => setState(() {
-                  _selected.length == _episodes.length
-                      ? _selected.clear()
-                      : _selected.addAll(
-                          List.generate(_episodes.length, (index) => index),
-                        );
-                }),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xA6000000), Color(0x00000000)],
+        ),
+      ),
+      child: SizedBox(
+        height: 64,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 6, 10, 8),
+          child: Row(
+            spacing: 8,
+            children: [
+              _round(Icons.arrow_back_rounded, '返回', _back),
+              Expanded(
                 child: Text(
-                  _selected.length == _episodes.length ? '取消全选' : '全选',
+                  '${_drama.title} · 第 ${_playback.episode.number} 集',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    shadows: [Shadow(color: Color(0x99000000), blurRadius: 4)],
+                  ),
                 ),
               ),
-              FilledButton.icon(
-                onPressed: _selected.isEmpty ? null : _download,
-                icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('下载'),
-              ),
-            ] else ...[
-              FollowPill(
-                store: widget.store,
-                drama: _drama,
-                radius: 10,
-                onToggled: _focus.requestFocus,
-              ),
-              Semantics(
-                label: '下载选集',
-                button: true,
-                excludeSemantics: true,
-                child: IconButton(
-                  onPressed: _canDownload && _roomy ? _startSelection : null,
-                  icon: const Icon(Icons.download_rounded),
-                  style: IconButton.styleFrom(fixedSize: const Size.square(44)),
+              if (_selecting) ...[
+                Text(
+                  '已选 ${_selected.length} 集',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
-              ),
+                TextButton(onPressed: _endSelection, child: const Text('取消')),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _selected.length == _episodes.length
+                        ? _selected.clear()
+                        : _selected.addAll(
+                            List.generate(_episodes.length, (index) => index),
+                          );
+                  }),
+                  child: Text(
+                    _selected.length == _episodes.length ? '取消全选' : '全选',
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _selected.isEmpty ? null : _download,
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: const Text('下载'),
+                ),
+              ] else ...[
+                FollowPill(
+                  store: widget.store,
+                  drama: _drama,
+                  radius: 10,
+                  onToggled: _focus.requestFocus,
+                ),
+                if (_roomy)
+                  _round(
+                    Icons.format_list_numbered_rounded,
+                    _drawer ? '收起选集' : '选集',
+                    _toggleDrawer,
+                    active: _drawer,
+                  ),
+                _round(
+                  Icons.download_rounded,
+                  '下载选集',
+                  _canDownload && _roomy ? _startSelection : null,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
+  /// 浮在画面上的圆形按钮：黑色半透明底，亮画面上也看得清。
+  Widget _round(
+    IconData icon,
+    String tooltip,
+    VoidCallback? onPressed, {
+    bool active = false,
+  }) => Material(
+    color: active
+        ? Colors.white.withValues(alpha: .26)
+        : Colors.black.withValues(alpha: .3),
+    shape: const CircleBorder(),
+    clipBehavior: Clip.antiAlias,
+    child: IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 21,
+      color: Colors.white,
+      disabledColor: Colors.white.withValues(alpha: .38),
+      tooltip: tooltip,
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(40),
+        padding: EdgeInsets.zero,
+      ),
+    ),
+  );
+
   Widget _panel(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: ColoredBox(
-        color: colors.surfaceContainerLow,
-        child: _episodeList(),
+    return Padding(
+      padding: const EdgeInsets.only(left: 10, top: 58),
+      child: Material(
+        color: colors.surfaceContainerLow.withValues(alpha: .97),
+        elevation: 16,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 6, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '选集 · 共 ${_episodes.length} 集',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '收起选集',
+                    onPressed: () => setState(() => _drawer = false),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(child: _episodeList()),
+          ],
+        ),
       ),
     );
   }
