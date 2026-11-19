@@ -12,6 +12,7 @@ import '../downloads/download_picker_page.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
 import '../shell/app_shell.dart';
+import '../shell/immersive.dart';
 import '../widgets/cover_backdrop.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
@@ -462,22 +463,55 @@ class _DetailPageState extends State<DetailPage> {
     },
   );
 
-  PreferredSizeWidget _appBar(DramaDetails details, double height) {
+  PreferredSizeWidget _appBar(
+    DramaDetails details,
+    double height, {
+    double rail = 0,
+    double top = 0,
+  }) {
     final colors = Theme.of(context).colorScheme;
+    final style = IconButton.styleFrom(
+      fixedSize: const Size.square(40),
+      backgroundColor: colors.surface.withValues(alpha: .72),
+      foregroundColor: colors.onSurface,
+      disabledBackgroundColor: colors.surface.withValues(alpha: .5),
+      disabledForegroundColor: colors.onSurface.withValues(alpha: .38),
+    );
+    // 顶部栏透明浮在封面上，只留两枚半透明圆按钮，画面一直铺到窗口最上沿
     return AppBar(
       toolbarHeight: height,
-      backgroundColor: WidgetStateColor.resolveWith(
-        (states) => states.contains(WidgetState.scrolledUnder)
-            ? colors.surfaceContainer
-            : Colors.transparent,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 0,
+      automaticallyImplyLeading: false,
+      leadingWidth: rail + 64,
+      leading: Padding(
+        padding: EdgeInsets.only(left: rail + 12, top: top),
+        child: Center(
+          child: IconButton(
+            onPressed: () => Navigator.maybePop(context),
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: '返回',
+            style: style,
+          ),
+        ),
       ),
       actions: [
-        IconButton(
-          tooltip: '更新剧集信息',
-          onPressed: details.loading ? null : _refresh,
-          icon: const Icon(Icons.refresh_rounded),
+        Padding(
+          padding: EdgeInsets.only(top: top),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: '更新剧集信息',
+                onPressed: details.loading ? null : _refresh,
+                icon: const Icon(Icons.refresh_rounded),
+                style: style,
+              ),
+              const SizedBox(width: 16),
+            ],
+          ),
         ),
-        const SizedBox(width: 4),
       ],
     );
   }
@@ -652,8 +686,11 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _widePage(DramaDetails details, {required bool desktop}) {
     final m = desktop ? _desktop : _pad;
-    final top = MediaQuery.paddingOf(context).top + 64;
-    final inset = desktop ? 32.0 : 24.0;
+    // 沉浸式：侧栏与窗口按钮都浮在画面上，内容整体让开它们
+    final rail = shellVisibleFrom(context) ? railInsetOf(context) : 0.0;
+    final caption = shellVisibleFrom(context) ? captionInset : 0.0;
+    final top = MediaQuery.paddingOf(context).top + 64 + caption;
+    final inset = (desktop ? 32.0 : 24.0) + rail;
     final gap = desktop ? 40.0 : 32.0;
     final side = desktop ? 420.0 : 380.0;
     final drama = details.drama;
@@ -748,31 +785,33 @@ class _DetailPageState extends State<DetailPage> {
         FadeSwitcher(alignment: Alignment.topCenter, child: episodeList),
       ],
     );
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: _appBar(details, 64),
-      body: SingleChildScrollView(
-        child: _withBackdrop(
-          drama,
-          top + 336,
-          Padding(
-            padding: EdgeInsets.fromLTRB(inset, top + 4, inset, 40),
-            child: LayoutBuilder(
-              builder: (context, constraints) =>
-                  constraints.maxWidth >= side + gap + 480
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: gap,
-                      children: [
-                        SizedBox(width: side, child: info),
-                        Expanded(child: episodes),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      spacing: gap,
-                      children: [info, episodes],
-                    ),
+    return ImmersivePage(
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: _appBar(details, 64 + caption, rail: rail, top: caption),
+        body: SingleChildScrollView(
+          child: _withBackdrop(
+            drama,
+            top + 336,
+            Padding(
+              padding: EdgeInsets.fromLTRB(inset, top + 4, inset, 40),
+              child: LayoutBuilder(
+                builder: (context, constraints) =>
+                    constraints.maxWidth >= side + gap + 480
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: gap,
+                        children: [
+                          SizedBox(width: side, child: info),
+                          Expanded(child: episodes),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        spacing: gap,
+                        children: [info, episodes],
+                      ),
+              ),
             ),
           ),
         ),

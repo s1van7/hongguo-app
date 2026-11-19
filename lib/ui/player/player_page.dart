@@ -8,6 +8,8 @@ import '../../models.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../downloads/download_actions.dart';
+import '../shell/immersive.dart';
+import '../shell/window_caption.dart';
 import '../theme/app_theme.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/follow_button.dart';
@@ -269,48 +271,84 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       ),
     );
     final panel = _roomy && (!_wide || _selecting);
-    return PopScope(
-      canPop: !_fullscreen && !_selecting && !_wide,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _back();
-      },
-      child: KeyboardControls(
-        child: Focus(
-          focusNode: _focus,
-          autofocus: true,
-          onKeyEvent: _key,
-          child: Scaffold(
-            backgroundColor: _filled ? Colors.black : theme.colorScheme.surface,
-            body: _filled
-                ? SafeArea(child: surface)
-                : SafeArea(
-                    child: ListenableBuilder(
-                      listenable: _playback,
-                      builder: (context, _) => Column(
-                        children: [
-                          _header(),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Expanded(child: surface),
-                                  if (panel) ...[
-                                    const SizedBox(width: 16),
-                                    SizedBox(
-                                      width: _panelWidth,
-                                      child: _panel(),
+    // 沉浸式：侧栏与窗口按钮浮在画面上，页面整体铺满，顶部栏透明浮着
+    final shell = shellVisibleFrom(context);
+    final rail = _fullscreen || !shell ? 0.0 : railInsetOf(context);
+    final caption = _fullscreen ? 0.0 : captionInset;
+    return ImmersivePage(
+      child: PopScope(
+        canPop: !_fullscreen && !_selecting && !_wide,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _back();
+        },
+        child: KeyboardControls(
+          child: Focus(
+            focusNode: _focus,
+            autofocus: true,
+            onKeyEvent: _key,
+            child: Theme(
+              data: dark,
+              child: Scaffold(
+                backgroundColor: Colors.black,
+                body: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _filled
+                          ? Padding(
+                              padding: EdgeInsets.only(left: rail),
+                              child: SafeArea(child: surface),
+                            )
+                          : Builder(
+                              builder: (context) => ListenableBuilder(
+                                listenable: _playback,
+                                builder: (context, _) => Column(
+                                  children: [
+                                    SizedBox(height: caption),
+                                    Padding(
+                                      padding: EdgeInsets.only(left: rail),
+                                      child: _header(context),
+                                    ),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          rail + 16,
+                                          0,
+                                          16,
+                                          16,
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            Expanded(child: surface),
+                                            if (panel) ...[
+                                              const SizedBox(width: 16),
+                                              SizedBox(
+                                                width: _panelWidth,
+                                                child: _panel(context),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
                     ),
-                  ),
+                    // 播放页被推到根导航时盖住了外壳，窗口按钮得自己补一条
+                    if (!shell && appCaptionEnabled && !_fullscreen)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        child: WindowCaptionBar(overlay: true),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -387,7 +425,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _focus.requestFocus();
   }
 
-  Widget _header() {
+  Widget _header(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return SizedBox(
       height: 64,
@@ -399,6 +437,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             IconButton(
               onPressed: _back,
               icon: const Icon(Icons.arrow_back_rounded),
+              color: Colors.white,
               style: IconButton.styleFrom(fixedSize: const Size.square(44)),
             ),
             Expanded(
@@ -409,6 +448,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -459,7 +499,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _panel() {
+  Widget _panel(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),

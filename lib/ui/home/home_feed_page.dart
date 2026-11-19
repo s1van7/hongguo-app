@@ -1249,7 +1249,7 @@ class _FeedSlideState extends State<_FeedSlide> {
           right: 10,
           width: 76,
           top: 64 + _captionInset + MediaQuery.paddingOf(context).top,
-          bottom: 124,
+          bottom: 124 + MediaQuery.paddingOf(context).bottom,
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.bottomCenter,
@@ -1323,7 +1323,7 @@ class _FeedSlideState extends State<_FeedSlide> {
         Positioned(
           left: 14 + _railInsetOf(context),
           right: 14,
-          bottom: 16,
+          bottom: 16 + MediaQuery.paddingOf(context).bottom,
           child: ConstrainedBox(
             // 宽屏不要把整条拉满，手机上自动占满可用宽度
             constraints: const BoxConstraints(maxWidth: 460),

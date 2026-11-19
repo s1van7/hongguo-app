@@ -322,6 +322,63 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           ),
   );
 
+  /// 全屏常驻返回键：控制条淡出以后也一直在，不用先点一下画面才找得到出口。
+  Widget _persistentBack(BuildContext context) {
+    final padding = MediaQuery.viewPaddingOf(context);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: math.max(padding.left, 10),
+        top: math.max(padding.top, 8),
+      ),
+      child: Material(
+        color: Colors.black.withValues(alpha: .32),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: IconButton(
+          onPressed: () => _back(true),
+          icon: const Icon(Icons.arrow_back_rounded),
+          iconSize: 22,
+          color: Colors.white,
+          tooltip: '退出全屏',
+          style: IconButton.styleFrom(
+            fixedSize: const Size.square(40),
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _seekBubble() {
+    final state = _session.player.state;
+    final value =
+        _seekValue ?? state.position.inMilliseconds.toDouble();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text.rich(
+        TextSpan(
+          text: formatClock(Duration(milliseconds: value.round())),
+          children: [
+            TextSpan(
+              text: ' / ${formatClock(state.duration)}',
+              style: TextStyle(color: Colors.white.withValues(alpha: .6)),
+            ),
+          ],
+        ),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+
   void _back(bool full) {
     if (_panel != null) {
       setState(() => _panel = null);
@@ -414,13 +471,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 backgroundColor: theme.colorScheme.surface,
                 body: Column(
                   children: [
-                    ColoredBox(
-                      color: Colors.black,
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: MediaQuery.paddingOf(context).top,
-                      ),
-                    ),
+                    // 画面顶到状态栏，标题栏不再垫一条黑边
                     AspectRatio(aspectRatio: 16 / 9, child: video),
                     Expanded(child: _details(context)),
                   ],
@@ -503,6 +554,19 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             ),
           ),
         ),
+        // 返回键常驻：全屏时不用等控制条冒出来才找得到出口
+        if (full)
+          Positioned(left: 0, top: 0, child: _persistentBack(context)),
+        if (full && _dragging)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 118,
+            child: FadePresence(
+              scaleFrom: .9,
+              child: IgnorePointer(child: Center(child: _seekBubble())),
+            ),
+          ),
         if (full && !visible && session.store.playbackPreferences.progressLine)
           Positioned(
             left: 0,
@@ -580,13 +644,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _miniControls(BuildContext context) {
     final session = _session;
+    // 画面顶到状态栏，按钮让开系统栏那一截
+    final statusBar = MediaQuery.viewPaddingOf(context).top;
     return Stack(
       fit: StackFit.expand,
       children: [
-        const IgnorePointer(
+        IgnorePointer(
           child: Align(
             alignment: Alignment.topCenter,
-            child: _Shade(height: 64, top: true),
+            child: _Shade(height: 64 + statusBar, top: true),
           ),
         ),
         const IgnorePointer(
@@ -598,7 +664,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         Positioned(
           left: 4,
           right: 4,
-          top: 0,
+          top: statusBar,
           height: 48,
           child: Row(
             children: [
@@ -621,14 +687,11 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Transform.translate(
-                offset: const Offset(0, 7),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: SizedBox(
-                    height: 20,
-                    child: _progress(context, thumb: 6),
-                  ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  height: 36,
+                  child: _progress(context, thumb: 6),
                 ),
               ),
               SizedBox(
@@ -667,7 +730,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        const IgnorePointer(
+        IgnorePointer(
           child: Align(
             alignment: Alignment.topCenter,
             child: _Shade(height: 110, top: true),
@@ -686,8 +749,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           height: 56,
           child: Row(
             children: [
-              _icon(Icons.arrow_back_rounded, '退出全屏', () => _rotate(true)),
-              const SizedBox(width: 4),
+              // 返回键由常驻的那枚负责，这里只占位，别让标题跟着跳
+              const SizedBox(width: 48),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -764,8 +827,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         Positioned(
           left: left + 8,
           right: right + 8,
-          bottom: 60,
-          height: 28,
+          bottom: 54,
+          height: 40,
           child: _progress(context, thumb: 8),
         ),
         Positioned(
@@ -944,14 +1007,17 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final colors = Theme.of(context).colorScheme;
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
-        trackHeight: 3,
+        trackHeight: _dragging ? 6 : 3,
         padding: EdgeInsets.zero,
         activeTrackColor: colors.primary,
         thumbColor: colors.primary,
         inactiveTrackColor: Colors.white.withValues(alpha: .25),
         secondaryActiveTrackColor: Colors.white.withValues(alpha: .4),
-        thumbShape: RoundSliderThumbShape(enabledThumbRadius: thumb),
-        overlayShape: SliderComponentShape.noOverlay,
+        thumbShape: RoundSliderThumbShape(
+          enabledThumbRadius: _dragging ? thumb + 3 : thumb,
+        ),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+        overlayColor: colors.primary.withValues(alpha: .22),
         trackShape: const RoundedRectSliderTrackShape(),
       ),
       child: ContainedSlider(

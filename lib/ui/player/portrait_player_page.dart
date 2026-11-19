@@ -651,10 +651,10 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         ),
         Positioned(
           key: const ValueKey('progress'),
-          left: 16,
-          right: 16,
-          bottom: bottom + 60,
-          height: 32,
+          left: 12,
+          right: 12,
+          bottom: bottom + 62,
+          height: 44,
           child: _chrome(_progress(context)),
         ),
         Positioned(
@@ -903,7 +903,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         thumbShape: RoundSliderThumbShape(
           enabledThumbRadius: dragging ? 10 : 6,
         ),
-        overlayShape: SliderComponentShape.noOverlay,
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+        overlayColor: colors.primary.withValues(alpha: .22),
         trackShape: const RoundedRectSliderTrackShape(),
       ),
       child: ContainedSlider(

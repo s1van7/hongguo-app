@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,13 +17,17 @@ import '../follow/follow_page.dart';
 import '../history/history_page.dart';
 import '../home/home_feed_page.dart';
 import '../mine/mine_page.dart';
+import '../theme/app_theme.dart';
 import '../update_prompt.dart';
 import '../widgets/bar_button.dart';
 import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/source_bar.dart';
+import 'immersive.dart';
 import 'window_caption.dart';
+
+export 'immersive.dart' show ShellForeground;
 
 enum AppTab {
   home('首页', Icons.play_circle_outline_rounded, Icons.play_circle_rounded),
@@ -45,25 +50,6 @@ Future<T?> openPage<T>(BuildContext context, WidgetBuilder builder) =>
         FormFactor.pad || FormFactor.window => false,
       },
     ).push(MaterialPageRoute<T>(builder: builder));
-
-class ShellForeground extends InheritedWidget {
-  const ShellForeground({
-    super.key,
-    required this.foreground,
-    required super.child,
-  });
-  final bool foreground;
-
-  static bool of(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<ShellForeground>()
-          ?.foreground ??
-      true;
-
-  @override
-  bool updateShouldNotify(ShellForeground oldWidget) =>
-      foreground != oldWidget.foreground;
-}
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
@@ -92,6 +78,7 @@ class _AppShellState extends State<AppShell> {
   var _tab = AppTab.home;
   var _headerFocused = false;
   bool _immersive = windowImmersive.value;
+  bool _pageImmersive = pageImmersive.value;
   FocusNode? _lastFocus;
   Timer? _exitWindow;
   DownloadOverview? _downloads;
@@ -106,6 +93,7 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     FocusManager.instance.addListener(_followFocus);
     windowImmersive.addListener(_onImmersive);
+    pageImmersive.addListener(_onPageImmersive);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) runStartupChecks(context, widget.store);
     });
@@ -114,6 +102,11 @@ class _AppShellState extends State<AppShell> {
   void _onImmersive() {
     if (!mounted || _immersive == windowImmersive.value) return;
     setState(() => _immersive = windowImmersive.value);
+  }
+
+  void _onPageImmersive() {
+    if (!mounted || _pageImmersive == pageImmersive.value) return;
+    setState(() => _pageImmersive = pageImmersive.value);
   }
 
   @override
@@ -139,6 +132,7 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     FocusManager.instance.removeListener(_followFocus);
     windowImmersive.removeListener(_onImmersive);
+    pageImmersive.removeListener(_onPageImmersive);
     for (final node in _tabFocus) {
       node.dispose();
     }
@@ -327,24 +321,7 @@ class _AppShellState extends State<AppShell> {
         if (!didPop) _back();
       },
       child: switch (AppScope.formFactorOf(context)) {
-        FormFactor.phone => Scaffold(
-          body: pages,
-          bottomNavigationBar: covered
-              ? null
-              : NavigationBar(
-                  selectedIndex: tabs.indexOf(_tab),
-                  onDestinationSelected: (index) => _tap(tabs[index]),
-                  destinations: [
-                    for (final tab in tabs)
-                      NavigationDestination(
-                        key: ValueKey('nav-${tab.name}'),
-                        icon: _badged(tab, Icon(tab.icon)),
-                        selectedIcon: _badged(tab, Icon(tab.selectedIcon)),
-                        label: tab.label,
-                      ),
-                  ],
-                ),
-        ),
+        FormFactor.phone => _phone(pages, covered, tabs),
         FormFactor.pad || FormFactor.window => _wide(pages, covered),
         FormFactor.television => Scaffold(
           body: SafeArea(
@@ -395,6 +372,32 @@ class _AppShellState extends State<AppShell> {
       ? _DownloadBadge(downloads: _downloads!, child: icon)
       : icon;
 
+  /// 手机端：底部导航栏浮在画面之上（半透明 + 模糊），视频和列表都能穿到它后面。
+  Widget _phone(Widget pages, bool covered, List<AppTab> tabs) {
+    final theme = Theme.of(context);
+    final immersive = _tab == AppTab.home || _pageImmersive;
+    return Scaffold(
+      // 让画面一直铺到底：导航栏浮着，SafeArea 由各页自己处理
+      extendBody: true,
+      backgroundColor: Colors.black,
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: AppTheme.systemBars(
+          immersive ? Brightness.dark : theme.brightness,
+        ),
+        child: pages,
+      ),
+      bottomNavigationBar: covered
+          ? null
+          : _PhoneNav(
+              tabs: tabs,
+              selected: _tab,
+              onTap: _tap,
+              badged: _badged,
+              overlay: immersive,
+            ),
+    );
+  }
+
   Widget _televisionHeader() {
     final tabs = Row(
       key: _televisionTabs,
@@ -427,10 +430,12 @@ class _AppShellState extends State<AppShell> {
 
   Widget _wide(Widget pages, bool covered) {
     final roomy = MediaQuery.sizeOf(context).width >= 840;
-    // 视频全屏/页面全屏：侧栏、标题栏全部让位，画面铺满整个窗口
+    final desktop = AppScope.formFactorOf(context) == FormFactor.window;
+    // 视频全屏：侧栏、标题栏全部让位，画面铺满整个窗口
     final fullscreen = _immersive;
-    // 首页信息流是沉浸式的：画面铺满整个窗口，侧栏浮在上面
-    final immersive = _tab == AppTab.home && !covered;
+    // 首页信息流、详情页、播放页都是沉浸式的：画面铺满整个窗口，侧栏浮在上面
+    final immersive =
+        (_tab == AppTab.home && !covered) || _pageImmersive;
     final expanded =
         roomy && widget.store.sideBarExpanded && !immersive && !fullscreen;
     final side = _SideBar(
@@ -454,36 +459,28 @@ class _AppShellState extends State<AppShell> {
     if (fullscreen) {
       return Scaffold(backgroundColor: Colors.black, body: body);
     }
-    if (!immersive) {
-      return Scaffold(
-        body: Column(
-          children: [
-            if (appCaptionEnabled) const WindowCaptionBar(),
-            Expanded(
-              child: Row(
-                children: [
-                  side,
-                  Expanded(child: body),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    // 树结构保持不变（只改内边距），切到沉浸式时页面状态不会丢
+    final rail = _sideMetrics(desktop: desktop, expanded: expanded).width;
+    final top = immersive ? 0.0 : captionInset;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: immersive ? Colors.black : null,
       body: Stack(
         children: [
-          Positioned.fill(child: body),
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.only(left: immersive ? 0 : rail, top: top),
+              child: body,
+            ),
+          ),
+          // 侧栏自己让开窗口按钮那一条，两种模式下都从窗口最上沿开始画背景
           Positioned(left: 0, top: 0, bottom: 0, child: side),
           // 窗口按钮浮在画面顶部，不占位
           if (appCaptionEnabled)
-            const Positioned(
-              left: 0,
+            Positioned(
+              left: immersive ? 0 : rail,
               right: 0,
               top: 0,
-              child: WindowCaptionBar(overlay: true),
+              child: WindowCaptionBar(overlay: immersive),
             ),
         ],
       ),
@@ -584,59 +581,78 @@ class _SideBarState extends State<_SideBar> {
       color: widget.overlay
           ? Colors.transparent
           : Theme.of(context).colorScheme.surfaceContainer,
-      child: SafeArea(
-        right: false,
-        child: AnimatedContainer(
-          key: const ValueKey('side-bar'),
-          duration: animate
-              ? Motion.of(context, expanded ? Motion.long : Motion.medium)
-              : Duration.zero,
-          curve: expanded ? Motion.enter : Motion.exit,
-          width: metrics.width,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              metrics.inset,
-              metrics.top,
-              metrics.inset,
-              12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              spacing: metrics.spacing,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(bottom: metrics.menuGap),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: 56,
-                      height: 48,
-                      child: onToggle == null
-                          ? null
-                          : Center(
-                              child: BarButton(
-                                icon: Icons.menu_rounded,
-                                tooltip: expanded ? '收起侧栏' : '展开侧栏',
-                                onPressed: onToggle,
-                              ),
-                            ),
+      child: Stack(
+        children: [
+          // 沉浸式时侧栏压在画面上，垫一层淡渐变保证图标看得清
+          if (widget.overlay)
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [Color(0x8C000000), Color(0x00000000)],
                     ),
                   ),
                 ),
-                for (final tab in widget.tabs)
-                  _SideItem(
-                    tab: tab,
-                    selected: tab == widget.selected,
-                    expanded: expanded,
-                    overlay: widget.overlay,
-                    metrics: metrics,
-                    badged: widget.badged,
-                    onTap: () => widget.onSelect(tab),
-                  ),
-              ],
+              ),
+            ),
+          SafeArea(
+            right: false,
+            child: AnimatedContainer(
+              key: const ValueKey('side-bar'),
+              duration: animate
+                  ? Motion.of(context, expanded ? Motion.long : Motion.medium)
+                  : Duration.zero,
+              curve: expanded ? Motion.enter : Motion.exit,
+              width: metrics.width,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  metrics.inset,
+                  metrics.top + captionInset,
+                  metrics.inset,
+                  12,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: metrics.spacing,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(bottom: metrics.menuGap),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: 56,
+                          height: 48,
+                          child: onToggle == null
+                              ? null
+                              : Center(
+                                  child: BarButton(
+                                    icon: Icons.menu_rounded,
+                                    tooltip: expanded ? '收起侧栏' : '展开侧栏',
+                                    onPressed: onToggle,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                    for (final tab in widget.tabs)
+                      _SideItem(
+                        tab: tab,
+                        selected: tab == widget.selected,
+                        expanded: expanded,
+                        overlay: widget.overlay,
+                        metrics: metrics,
+                        badged: widget.badged,
+                        onTap: () => widget.onSelect(tab),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -782,6 +798,85 @@ class _DownloadBadge extends StatelessWidget {
     },
     child: child,
   );
+}
+
+/// 手机端悬浮底部导航栏：半透明 + 模糊，画面从它后面穿过去。
+class _PhoneNav extends StatelessWidget {
+  const _PhoneNav({
+    required this.tabs,
+    required this.selected,
+    required this.onTap,
+    required this.badged,
+    required this.overlay,
+  });
+
+  final List<AppTab> tabs;
+  final AppTab selected;
+  final ValueChanged<AppTab> onTap;
+  final Widget Function(AppTab tab, Widget icon) badged;
+
+  /// 压在视频上：底色更暗、图标转白，和首页一个观感。
+  final bool overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final background = overlay
+        ? Colors.black.withValues(alpha: .34)
+        : scheme.surface.withValues(alpha: .82);
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: background,
+            border: Border(
+              top: BorderSide(
+                color: overlay
+                    ? Colors.white.withValues(alpha: .08)
+                    : scheme.outlineVariant.withValues(alpha: .5),
+              ),
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottom),
+            child: Theme(
+              data: overlay
+                  ? theme.copyWith(
+                      colorScheme: ColorScheme.fromSeed(
+                        seedColor: scheme.primary,
+                        brightness: Brightness.dark,
+                      ),
+                    )
+                  : theme,
+              child: NavigationBar(
+                height: kPhoneNavHeight,
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                elevation: 0,
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.alwaysShow,
+                selectedIndex: tabs.indexOf(selected),
+                onDestinationSelected: (index) => onTap(tabs[index]),
+                destinations: [
+                  for (final tab in tabs)
+                    NavigationDestination(
+                      key: ValueKey('nav-${tab.name}'),
+                      icon: badged(tab, Icon(tab.icon)),
+                      selectedIcon: badged(tab, Icon(tab.selectedIcon)),
+                      label: tab.label,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TelevisionTab extends StatelessWidget {
