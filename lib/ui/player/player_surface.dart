@@ -43,6 +43,7 @@ class PlayerSurface extends StatefulWidget {
     required this.onVolume,
     this.onMiniWindow,
     this.onEpisodes,
+    this.header,
     required this.onSurface,
   });
   final PlaybackHandle handle;
@@ -57,6 +58,10 @@ class PlayerSurface extends StatefulWidget {
 
   /// 打开选集；为 null 时不显示选集按钮。
   final VoidCallback? onEpisodes;
+
+  /// 顶部浮层（返回键、标题、操作按钮）：和控制条一起淡入淡出，
+  /// 鼠标一动画面上就出现，静止片刻自动让位给画面。
+  final Widget? header;
   final VoidCallback onSurface;
 
   @override
@@ -77,6 +82,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   bool _holding = false;
   bool _visible = true;
   bool _overBar = false;
+  bool _overHeader = false;
   bool _pointer = false;
   _Popup? _popup;
   double? _seekValue;
@@ -161,10 +167,11 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
 
   void _scheduleHide() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(Duration(milliseconds: widget.touch ? 3000 : 500), () {
+    _hideTimer = Timer(Duration(milliseconds: widget.touch ? 3000 : 1200), () {
       final state = _session.player.state;
       if (!mounted ||
           _overBar ||
+          _overHeader ||
           _popup != null ||
           _seekValue != null ||
           !state.playing ||
@@ -458,21 +465,40 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 onHover: (_) => _show(),
               ),
             ),
-            // 全屏时返回键常驻：控制条淡出以后也一直在
-            if (widget.fullscreen)
+            // 顶部浮层（返回键、标题、操作按钮）跟着控制条一起淡出，
+            // 不再常驻；鼠标移到画面任何位置都能把它唤回来
+            if (widget.header case final header?)
               Positioned(
-                left: 12,
-                top: 12,
-                child: Material(
-                  color: Colors.black.withValues(alpha: .32),
-                  shape: const CircleBorder(),
-                  clipBehavior: Clip.antiAlias,
-                  child: _icon(
-                    Icons.arrow_back_rounded,
-                    '退出全屏',
-                    widget.onFullscreen,
-                    size: 40,
-                    iconSize: 22,
+                left: 0,
+                right: 0,
+                top: 0,
+                child: IgnorePointer(
+                  ignoring: !visible,
+                  child: ExcludeFocus(
+                    excluding: !visible,
+                    child: MouseRegion(
+                      // 鼠标压在标题栏上时不自动隐藏，否则还没点到返回键就没了
+                      hitTestBehavior: HitTestBehavior.translucent,
+                      onEnter: (_) {
+                        _overHeader = true;
+                        _hideTimer?.cancel();
+                      },
+                      onHover: (_) {
+                        _overHeader = true;
+                        _show();
+                      },
+                      onExit: (_) {
+                        _overHeader = false;
+                        _scheduleHide();
+                      },
+                      child: AnimatedOpacity(
+                        opacity: visible ? 1 : 0,
+                        duration: state.playing
+                            ? const Duration(milliseconds: 180)
+                            : Duration.zero,
+                        child: header,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -683,12 +709,12 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 _toolbar(context, position, constraints.maxWidth),
           ),
         ),
-        // 全屏返回键常驻在控制条外面，这里不再重复放一个
+        // 全屏返回键跟着顶部浮层走，这里不再重复放一个
         if (widget.fullscreen &&
             (_session.preferences.showClock ||
                 _session.preferences.showNetworkSpeed))
           Positioned(
-            top: 12,
+            top: widget.header == null ? 12 : 72,
             right: 20,
             child: IgnorePointer(
               child: Row(

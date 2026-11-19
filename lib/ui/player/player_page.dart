@@ -98,7 +98,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     }
     final next = !_windowFullscreen;
     widget.onWindowFullscreen?.call(next);
-    setState(() => _windowFullscreen = next);
+    setState(() {
+      _windowFullscreen = next;
+      // 全屏没有侧边浮层的位置，进去前先把选集收起来
+      _drawer = false;
+    });
     _focus.requestFocus();
     await _setFullScreen(next);
   }
@@ -128,7 +132,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// 选集浮层：画面永远是最大的，选集需要时再滑出来盖住右侧。
   void _toggleDrawer() {
-    if (!_roomy) {
+    // 全屏/铺满时画面没有侧边浮层的位置，选集改成弹窗
+    if (!_roomy || _filled) {
       unawaited(_showEpisodes());
       return;
     }
@@ -279,6 +284,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             onVolume: (delta) => _volume(_playback.changeVolume(delta)),
             onMiniWindow: widget.onMiniWindow,
             onEpisodes: _toggleDrawer,
+            header: _headerBar(context),
             onSurface: _focus.requestFocus,
           ),
         ),
@@ -289,6 +295,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final shell = shellVisibleFrom(context);
     final rail = _fullscreen || !shell ? 0.0 : railInsetOf(context);
     final caption = _fullscreen ? 0.0 : captionInset;
+    // 播放页被推到根导航时窗口按钮自己补了一条，标题栏得让开它
+    final captionGap = !shell && appCaptionEnabled && !_fullscreen
+        ? captionInset
+        : 0.0;
     return ImmersivePage(
       child: PopScope(
         canPop: !_fullscreen && !_selecting && !_wide && !_drawer,
@@ -309,40 +319,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                     Positioned.fill(
                       child: _filled
                           ? Padding(
-                              padding: EdgeInsets.only(left: rail),
+                              padding: EdgeInsets.only(
+                                left: rail,
+                                top: captionGap,
+                              ),
                               child: SafeArea(child: surface),
                             )
-                          : Builder(
-                              builder: (context) => ListenableBuilder(
-                                listenable: _playback,
-                                builder: (context, _) => Padding(
-                                  // 画面直接铺满窗口，标题栏浮在上面，选集按需滑出
-                                  padding: EdgeInsets.fromLTRB(
-                                    rail + 12,
-                                    12 + caption,
-                                    12,
-                                    12,
-                                  ),
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(child: surface),
-                                      Positioned(
-                                        left: 0,
-                                        right: 0,
-                                        top: 0,
-                                        child: _header(context),
-                                      ),
-                                      if (drawer)
-                                        Positioned(
-                                          top: 0,
-                                          right: 0,
-                                          bottom: 0,
-                                          width: _panelWidth,
-                                          child: _panel(context),
-                                        ),
-                                    ],
-                                  ),
-                                ),
+                          : Padding(
+                              // 画面直接铺满窗口，标题栏浮在画面上，选集按需滑出
+                              padding: EdgeInsets.fromLTRB(
+                                rail + 12,
+                                12 + caption,
+                                12,
+                                12,
+                              ),
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(child: surface),
+                                  if (drawer)
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      width: _panelWidth,
+                                      child: _panel(context),
+                                    ),
+                                ],
                               ),
                             ),
                     ),
@@ -433,6 +435,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
     _focus.requestFocus();
   }
+
+  /// 顶部浮层交给播放表面统一显隐：鼠标一动画面上就出现，
+  /// 静止片刻后跟着控制条一起淡出，不再一直挂在画面上。
+  Widget _headerBar(BuildContext context) => ListenableBuilder(
+    listenable: _playback,
+    builder: (context, _) => _header(context),
+  );
 
   Widget _header(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
