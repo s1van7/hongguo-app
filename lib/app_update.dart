@@ -36,7 +36,8 @@ const releaseRepository = 's1van7/yingyu';
 
 const _latestPage = 'https://github.com/$releaseRepository/releases/latest';
 const _manifestUrl = 'https://yy.s1van.top:8448/dl/latest.json';
-const _latestApi = 'https://api.github.com/repos/$releaseRepository/releases/latest';
+const _latestApi =
+    'https://api.github.com/repos/$releaseRepository/releases/latest';
 
 /// 当前版本，形如 `1.0.2`。构建号只用于安装覆盖，不再对外展示。
 Future<String> currentAppVersion() async {
@@ -121,7 +122,6 @@ Future<AppUpdate?> fetchLatestRelease(
   );
 }
 
-
 /// 清单里的平台键：Windows 取 exe，Android 取 apk。
 String get _platformKey {
   if (Platform.isWindows) return 'windows';
@@ -148,12 +148,7 @@ List<UpdateSource> _manifestSources(Map json) {
   add(UpdateSourceKind.mirror, '加速下载', 'GitHub 镜像，通常最快', map['mirror']);
   add(UpdateSourceKind.selfHosted, '自建下载', '走你的服务器，稳定但带宽有限', map['url']);
   add(UpdateSourceKind.github, 'GitHub 下载', '需要能直连 github.com', map['github']);
-  add(
-    UpdateSourceKind.netdisk,
-    '网盘下载',
-    '蓝奏云，浏览器打开即可下载',
-    map['lanzou'],
-  );
+  add(UpdateSourceKind.netdisk, '网盘下载', '夸克网盘，浏览器打开即可下载', map['lanzou']);
   if (sources.isEmpty) {
     add(UpdateSourceKind.selfHosted, '下载', '打开下载地址', json['url']);
   }
@@ -176,10 +171,7 @@ Future<AppUpdate?> _fromManifest(Duration timeout) async {
       ..set(HttpHeaders.userAgentHeader, 'yingyu-app')
       ..set(HttpHeaders.cacheControlHeader, 'no-cache');
     final response = await request.close().timeout(timeout);
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(timeout);
+    final body = await response.transform(utf8.decoder).join().timeout(timeout);
     if (response.statusCode != 200) {
       throw const AppUpdateFailure('更新服务返回异常');
     }
@@ -203,7 +195,9 @@ Future<AppUpdate?> _fromManifest(Duration timeout) async {
 Future<String?> _tagFromRedirect(Duration timeout) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
-    final request = await client.getUrl(Uri.parse(_latestPage)).timeout(timeout);
+    final request = await client
+        .getUrl(Uri.parse(_latestPage))
+        .timeout(timeout);
     request.followRedirects = false;
     request.headers.set(HttpHeaders.userAgentHeader, 'yingyu-app');
     final response = await request.close().timeout(timeout);
@@ -221,17 +215,12 @@ Future<String?> _tagFromRedirect(Duration timeout) async {
 Future<String?> _tagFromApi(Duration timeout) async {
   final client = HttpClient()..connectionTimeout = timeout;
   try {
-    final request = await client
-        .getUrl(Uri.parse(_latestApi))
-        .timeout(timeout);
+    final request = await client.getUrl(Uri.parse(_latestApi)).timeout(timeout);
     request.headers
       ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
       ..set(HttpHeaders.userAgentHeader, 'yingyu-app');
     final response = await request.close().timeout(timeout);
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(timeout);
+    final body = await response.transform(utf8.decoder).join().timeout(timeout);
     if (response.statusCode != 200) return null;
     final decoded = jsonDecode(body);
     if (decoded is! Map) return null;
