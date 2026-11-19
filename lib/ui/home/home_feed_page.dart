@@ -299,7 +299,9 @@ class HomeFeedPageState extends State<HomeFeedPage>
         );
         if (rec.items.isNotEmpty || more) return rec;
       } catch (_) {
-        if (categoryId.isEmpty && more) rethrow;
+        // 推荐页（无分类）在刷新或翻页时不能悄悄退回目录接口：目录第一页
+        // 每次都一样，用户会以为“刷新没反应”。宁可报错让他重试。
+        if (categoryId.isEmpty && (more || force)) rethrow;
       }
     }
     return repo.catalog(

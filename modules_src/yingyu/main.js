@@ -76,6 +76,9 @@ const recommendationFeeds = [
   { key: "find_drama", tabType: "8", bottomTab: "" },
 ];
 
+// 首页推荐流的键名；空分类会被当成它处理。
+const defaultRecommendationFeed = "home_feed";
+
 const rankingBoards = {
   "hongguo-hot": { path: "hot-drama", upstreamKey: "hongguo" },
   "hongguo-real": { path: "hot-real-drama", upstreamKey: "real" },
@@ -3011,6 +3014,11 @@ function validateRecommendation(query) {
 }
 
 function recommendationQuery(genre, cursor, seen) {
+  // 首页「推荐」分类没有分类 id，落到这里就是空字符串；统一当成首页推荐流，
+  // 否则客户端每次刷新都会因为分类无效退回到目录接口，拿回同一批剧集。
+  if (genre === "") {
+    genre = defaultRecommendationFeed;
+  }
   const query = { genre, offset: 0, sessionId: "", cellId: "", showType: "", seen: [] };
   if (cursor !== null && cursor !== undefined) {
     if (!isRecord(cursor)) {
@@ -3058,7 +3066,7 @@ function recommendations(genre, cursor, seen) {
   const page = fetchRecommendations(query);
   return {
     items: page.items,
-    cursor: { genre, offset: page.nextOffset, sessionId: page.sessionId || query.sessionId, cellId: page.cellId || "", showType: page.showType || "", seen: null },
+    cursor: { genre: query.genre, offset: page.nextOffset, sessionId: page.sessionId || query.sessionId, cellId: page.cellId || "", showType: page.showType || "", seen: null },
     hasMore: page.hasMore,
   };
 }
