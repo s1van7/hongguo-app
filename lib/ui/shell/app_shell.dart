@@ -434,8 +434,7 @@ class _AppShellState extends State<AppShell> {
     // 视频全屏：侧栏、标题栏全部让位，画面铺满整个窗口
     final fullscreen = _immersive;
     // 首页信息流、详情页、播放页都是沉浸式的：画面铺满整个窗口，侧栏浮在上面
-    final immersive =
-        (_tab == AppTab.home && !covered) || _pageImmersive;
+    final immersive = (_tab == AppTab.home && !covered) || _pageImmersive;
     final expanded =
         roomy && widget.store.sideBarExpanded && !immersive && !fullscreen;
     final side = _SideBar(
@@ -857,8 +856,7 @@ class _PhoneNav extends StatelessWidget {
                 surfaceTintColor: Colors.transparent,
                 shadowColor: Colors.transparent,
                 elevation: 0,
-                labelBehavior:
-                    NavigationDestinationLabelBehavior.alwaysShow,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 selectedIndex: tabs.indexOf(selected),
                 onDestinationSelected: (index) => onTap(tabs[index]),
                 destinations: [

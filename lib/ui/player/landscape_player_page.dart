@@ -351,8 +351,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _seekBubble() {
     final state = _session.player.state;
-    final value =
-        _seekValue ?? state.position.inMilliseconds.toDouble();
+    final value = _seekValue ?? state.position.inMilliseconds.toDouble();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
@@ -555,8 +554,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           ),
         ),
         // 返回键常驻：全屏时不用等控制条冒出来才找得到出口
-        if (full)
-          Positioned(left: 0, top: 0, child: _persistentBack(context)),
+        if (full) Positioned(left: 0, top: 0, child: _persistentBack(context)),
         if (full && _dragging)
           Positioned(
             left: 0,
