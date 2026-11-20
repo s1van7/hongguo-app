@@ -27,3 +27,18 @@
 ## 模块接口的改动
 
 需要宿主提供新的接口或能力时，欢迎直接提 PR 到本仓库，并在 `CHANGELOG.md` 写明。
+
+## 自建更新分发
+
+应用内的「检查更新」优先读自建清单，拉不到再退回 GitHub Release。
+
+- 清单地址：`https://yy.s1van.top:8448/dl/latest.json`（备用域名 `https://dl.s1van.top/`，走 Cloudflare 隧道）
+- 服务器：`/var/www/yy/dl/`，安装包与清单同目录，由 nginx 直接静态分发
+- 同步：`yy-update-sync.timer` 每 10 分钟拉一次 GitHub 最新 Release，把 `yingyu-<版本>-arm64-v8a.apk`
+  和 `yingyu-<版本>-windows-x64-setup.exe` 镜像到本地，核对大小后把清单切到自建地址；
+  镜像没下完时清单里先给加速代理地址，客户端不会因为「本地还没下完」而拿不到新版
+- 手动触发：`systemctl start yy-update-sync.service`，日志 `journalctl -u yy-update-sync.service -n 50`
+- 只保留最近 3 个版本的安装包，更早的自动清理（脚本里 `prune()`）
+- 网盘链接写在 `/etc/yy-lanzou.json`，按平台配，形如 `{"android": "https://...", "windows": "https://..."}`
+
+改了发布流程（产物名、平台）时，同步改 `PLATFORMS` 里的文件名模板，否则该平台会被跳过。
