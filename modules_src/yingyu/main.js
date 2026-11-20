@@ -21,7 +21,7 @@ const minuteMs = 60 * secondMs;
 const danmakuMaxDurationMs = 24 * 60 * minuteMs;
 const defaultMaxPages = 50;
 const deviceRotations = 3;
-const registerPauseMs = 10 * minuteMs;
+const registerPauseMs = 2 * minuteMs;
 const appRequestTimeoutMs = 20 * secondMs;
 const searchTimeoutMs = 40 * secondMs;
 const searchPageTimeoutMs = 12 * secondMs;
@@ -44,13 +44,14 @@ const searchSeriesTab = "29";
 const audioSearchTab = "2";
 const tagPanelCategory = "5000";
 
-// 接口返回 200 但正文为空：平台侧整体拒绝（多半是网络出口在境外或走了代理），
-// 换设备身份也没用，直接给用户一句能自己动手的提示。
-const emptyResponseHint = "红果接口没有返回数据，开了代理或 VPN 请切回国内网络";
+// 接口返回 200 但正文为空：平台侧没放行这台设备身份。
+// 设备注册必须带签名，注册出来的身份才是「可信设备」；不带签名注册的旧身份
+// 搜详情都能用，但取流接口一律回空正文。换身份后仍空才把错误抛给用户。
+const emptyResponseHint = "红果接口没有返回数据，已自动更换设备身份仍未通过，请稍后再试";
 
 const paths = {
   videoDetail: "/novel/player/video_detail/v1/",
-  videoModel: "/novel/player/multi_video_model/player/v1",
+  videoModel: "/novel/player/multi_video_model/v1/",
   landpage: "/reading/distribution/category/landpage/v/",
   seriesPack: "/reading/distribution/book_pack_fields/inner_feed_detail/v1/",
   searchTab: "/reading/bookapi/search/tab/v/",
@@ -1377,45 +1378,70 @@ function registerDevice() {
     region: "CN", tz_name: "Asia/Shanghai", tz_offset: 28800, sim_region: "cn", device_platform: "android",
     not_request_sender: 0, is_system_app: 0, sdk_flavor: "china", rom: "OS2.0", rom_version: "BP2A.250605.031.A3",
   };
-  const body = JSON.stringify({ magic_tag: "ss_app_log", header, _gen_time: Date.now() });
-  const query = appQuery("", "");
-  delete query.device_id;
-  delete query.iid;
-  query.req_id = uuidLike();
-  const ticket = host.reserve({ url: deviceRegisterUrl });
-  query._rticket = String(Date.now());
-  const response = host.fetch({
-    method: "POST", url: deviceRegisterUrl + "?" + encodeQuery(query), body, ticket,
-    limit: 64 * 1024, timeoutMs: appRequestTimeoutMs, followRedirects: true, anyStatus: true,
-    headers: { "User-Agent": appUserAgent, Accept: "application/json", "Content-Type": "application/json; charset=utf-8" },
-  });
-  if (response.status >= 500) {
-    throw new Error("红果设备注册 HTTP " + response.status);
+  // 注册也要签名：不带签名注册出来的设备身份，取流接口会一直回空正文。
+  // _rticket 与签名时间戳必须是同一个毫秒值，否则 X-Argus 与请求对不上。
+  // 同一出口短时间注册太多设备会被风控挡（HTTP 444），隔一会儿再来就能过，
+  // 所以这里自己退避重试两次，别把一次 444 直接当成「注册失败」丢给用户。
+  let blocked = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      host.sleep(800 * attempt);
+    }
+    const body = JSON.stringify({ magic_tag: "ss_app_log", header, _gen_time: Date.now() });
+    const query = appQuery("", "");
+    delete query.device_id;
+    delete query.iid;
+    query.req_id = uuidLike();
+    const ticket = host.reserve({ url: deviceRegisterUrl });
+    const now = Date.now();
+    query._rticket = String(now);
+    const rawQuery = encodeQuery(query);
+    const response = host.fetch({
+      method: "POST", url: deviceRegisterUrl + "?" + rawQuery, body, ticket,
+      limit: 64 * 1024, timeoutMs: appRequestTimeoutMs, followRedirects: true, anyStatus: true,
+      headers: Object.assign(
+        { "User-Agent": appUserAgent, Accept: "application/json", "Content-Type": "application/json; charset=utf-8" },
+        signPlayer(rawQuery, body, "8662", "0", now, host.randomBytes(11))
+      ),
+    });
+    if (response.status === 444 || response.status === 403 || response.status === 429) {
+      blocked = failure("红果设备注册被风控拦截（HTTP " + response.status + "）", { rejection: true });
+      continue;
+    }
+    if (response.status >= 500) {
+      throw new Error("红果设备注册 HTTP " + response.status);
+    }
+    let result;
+    try {
+      result = parseJson(response.body);
+    } catch (error) {
+      result = undefined;
+    }
+    if (result === undefined) {
+      throw new Error("红果设备注册收到的不是接口数据（HTTP " + response.status + "）");
+    }
+    if (response.status !== 200) {
+      throw failure("红果设备注册 HTTP " + response.status, { rejection: true });
+    }
+    const deviceId = mapString(result, "device_id_str", "device_id");
+    const installId = mapString(result, "install_id_str", "install_id");
+    if (!numericId(deviceId) || !numericId(installId) || deviceId === "0" || installId === "0") {
+      throw failure("红果设备注册未返回设备号", { rejection: true });
+    }
+    return { deviceId, installId };
   }
-  let result;
-  try {
-    result = parseJson(response.body);
-  } catch (error) {
-    result = undefined;
-  }
-  if (result === undefined) {
-    throw new Error("红果设备注册收到的不是接口数据（HTTP " + response.status + "）");
-  }
-  if (response.status !== 200) {
-    throw failure("红果设备注册 HTTP " + response.status, { rejection: true });
-  }
-  const deviceId = mapString(result, "device_id_str", "device_id");
-  const installId = mapString(result, "install_id_str", "install_id");
-  if (!numericId(deviceId) || !numericId(installId) || deviceId === "0" || installId === "0") {
-    throw failure("红果设备注册未返回设备号", { rejection: true });
-  }
-  return { deviceId, installId };
+  throw blocked || new Error("红果设备注册失败");
 }
 
 function ensureDevice(helper, rejected) {
+  // 旧版本注册出来的设备身份没带签名，平台不认，取流会一直空正文。
+  // 所以除了「已注册」还要「已按签名注册」，老状态第一次跑就会自动重注册。
   const settled = (state) => {
     const [current, , registered] = deviceOf(state, helper);
-    return rejected === "" ? registered : rejected !== current;
+    if (!registered || (helper ? state.helperTrusted !== true : state.trusted !== true)) {
+      return false;
+    }
+    return rejected === "" ? true : rejected !== current;
   };
   if (settled(currentState())) {
     return;
@@ -1442,10 +1468,12 @@ function ensureDevice(helper, rejected) {
       state.helperDeviceId = registered.deviceId;
       state.helperInstallId = registered.installId;
       state.helperRegistered = true;
+      state.helperTrusted = true;
     } else {
       state.deviceId = registered.deviceId;
       state.installId = registered.installId;
       state.registered = true;
+      state.trusted = true;
     }
     writeState(state);
   });
