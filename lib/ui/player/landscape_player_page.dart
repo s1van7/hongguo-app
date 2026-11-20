@@ -14,7 +14,7 @@ import '../app_scope.dart';
 import '../downloads/download_actions.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
-import '../widgets/contained_slider.dart';
+import '../widgets/seek_preview_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
 import 'cast_page.dart';
 import 'danmaku_overlay.dart';
@@ -1000,7 +1000,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         overlayColor: colors.primary.withValues(alpha: .22),
         trackShape: const RoundedRectSliderTrackShape(),
       ),
-      child: ContainedSlider(
+      child: SeekPreviewSlider(
+        showOnDrag: false,
         slider: Slider(
           value: position,
           max: max,

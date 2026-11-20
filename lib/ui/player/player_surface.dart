@@ -11,6 +11,7 @@ import '../../playback_session.dart';
 import '../settings/sorani_account_view.dart';
 import '../theme/motion.dart';
 import '../widgets/contained_slider.dart';
+import '../widgets/seek_preview_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
 import 'cast_page.dart';
 import 'danmaku_overlay.dart';
@@ -660,8 +661,10 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
               secondaryActiveTrackColor: Colors.white.withValues(alpha: .4),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              // 固定轨道形状，悬停预览的位置换算才和真实跳转一致
+              trackShape: const RoundedRectSliderTrackShape(),
             ),
-            child: ContainedSlider(
+            child: SeekPreviewSlider(
               slider: Slider(
                 value: position,
                 max: max,
