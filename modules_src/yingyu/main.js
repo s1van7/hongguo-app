@@ -51,7 +51,12 @@ const emptyResponseHint = "红果接口没有返回数据，已自动更换设�
 
 const paths = {
   videoDetail: "/novel/player/video_detail/v1/",
-  videoModel: "/novel/player/multi_video_model/v1/",
+  // 取流：2026-11 起旧的 multi_video_model/v1 一律回 200 空正文（换设备身份也没用），
+  // 红果把播放信息搬到了 multi_video_model/player/v2：data 直接按视频 ID 给
+  // video_model（JSON 字符串），里面 video_list 带 main_url。v1 留作兜底。
+  videoModel: "/novel/player/multi_video_model/player/v2",
+  videoModelFallback: "/novel/player/multi_video_model/player/v1/",
+  videoModelLegacy: "/novel/player/multi_video_model/v1/",
   landpage: "/reading/distribution/category/landpage/v/",
   seriesPack: "/reading/distribution/book_pack_fields/inner_feed_detail/v1/",
   searchTab: "/reading/bookapi/search/tab/v/",
@@ -1500,7 +1505,10 @@ function appRequest(method, path, extra, payload, options) {
   const comment = options.comment === true;
   const helper = options.helper === true;
   const deadline = options.deadline;
-  const playback = path === paths.videoModel;
+  const playback =
+    path === paths.videoModel ||
+    path === paths.videoModelFallback ||
+    path === paths.videoModelLegacy;
   const signed = !comment && path !== paths.bookmallTab;
   let lane = "";
   let registerError = null;
@@ -2340,7 +2348,31 @@ function fetchAppMedia(videoId, helper) {
     },
     mixed_video_id_map: { "1004": [videoId] }, dr_scene: "player",
   };
-  const result = appRequest("POST", paths.videoModel, null, payload, { helper });
+  // 接口换过地址：先走 v2，空正文或没解析出播放信息再退到 v1 和旧地址
+  let lastError = null;
+  for (const path of [paths.videoModel, paths.videoModelFallback, paths.videoModelLegacy]) {
+    let result;
+    try {
+      result = appRequest("POST", path, null, payload, { helper });
+    } catch (error) {
+      lastError = error;
+      if (error.emptyResponse !== true) {
+        throw error;
+      }
+      continue;
+    }
+    try {
+      return appMediaModel(result, videoId);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("红果 App 未返回所请求的分集播放信息");
+}
+
+/// 解析取流接口的正文。v2/v1 的 data 直接按视频 ID 给条目，
+/// 旧地址多包一层 1004（内容类型）。
+function appMediaModel(result, videoId) {
   const entries = nested(result, "data");
   const data = nested(isRecord(entries["1004"]) ? entries["1004"] : entries, videoId);
   if (isEmptyRecord(data)) {
