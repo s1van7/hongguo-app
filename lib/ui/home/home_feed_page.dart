@@ -1274,27 +1274,12 @@ class _FeedSlideState extends State<_FeedSlide> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.bottomLeft,
-                              child: ConstrainedBox(
-                                // 超宽屏不要把简介拉成一整行长条
-                                constraints: const BoxConstraints(maxWidth: 720),
-                                child: _caption(epNum),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          SizedBox(
-                            width: 74,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(maxHeight: railMax),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.bottomCenter,
-                                child: _rail(session, total, turns),
-                              ),
-                            ),
+                          // 简介铺满整行，功能栏按内容宽度贴在最右边，两者不会相交
+                          Expanded(child: _caption(epNum)),
+                          const SizedBox(width: 8),
+                          FeedDockRail(
+                            railMax: railMax,
+                            child: _rail(session, total, turns),
                           ),
                         ],
                       ),
@@ -1479,6 +1464,29 @@ class _FeedSlideState extends State<_FeedSlide> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 底部功能栏的外框：按内容宽度贴右，窗口矮的时候等比缩小。
+///
+/// 不写死宽度，简介才能一直铺到它左边，按钮也能尽量靠到屏幕右侧。
+class FeedDockRail extends StatelessWidget {
+  const FeedDockRail({super.key, required this.railMax, required this.child});
+
+  /// 功能栏最多能用多高，超出就整体等比缩小。
+  final double railMax;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: railMax, maxWidth: 96),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.bottomRight,
+        child: child,
       ),
     );
   }
