@@ -44,6 +44,10 @@ const searchSeriesTab = "29";
 const audioSearchTab = "2";
 const tagPanelCategory = "5000";
 
+// 接口返回 200 但正文为空：平台侧整体拒绝（多半是网络出口在境外或走了代理），
+// 换设备身份也没用，直接给用户一句能自己动手的提示。
+const emptyResponseHint = "红果接口没有返回数据，开了代理或 VPN 请切回国内网络";
+
 const paths = {
   videoDetail: "/novel/player/video_detail/v1/",
   videoModel: "/novel/player/multi_video_model/player/v1",
@@ -1543,7 +1547,7 @@ function appRequest(method, path, extra, payload, options) {
       });
     } catch (error) {
       if (error.oversized) {
-        throw new Error("红果 App 接口未返回有效数据");
+        throw new Error("红果接口返回内容异常，请稍后重试");
       }
       lastError = error;
       if (error.backoff) {
@@ -1559,7 +1563,8 @@ function appRequest(method, path, extra, payload, options) {
       continue;
     }
     if (response.body.length === 0) {
-      lastError = new Error("红果 App 接口未返回有效数据");
+      lastError = failure(emptyResponseHint, { emptyResponse: true });
+      // 空响应先换一个设备身份再试；轮换用尽还空，就别再空转重试了
       if (signed && rotations < deviceRotations) {
         try {
           ensureDevice(helper, deviceId);
@@ -1572,11 +1577,12 @@ function appRequest(method, path, extra, payload, options) {
         } catch (error) {
           registerError = error;
         }
+        continue;
       }
       if (registerError !== null) {
-        lastError = new Error("红果 App 接口未返回有效数据（设备注册失败：" + message(registerError) + "）");
+        lastError = failure(emptyResponseHint + "（设备注册失败：" + message(registerError) + "）", { emptyResponse: true });
       }
-      continue;
+      throw lastError;
     }
     let result;
     try {
@@ -1593,7 +1599,7 @@ function appRequest(method, path, extra, payload, options) {
     }
     return result;
   }
-  throw lastError || new Error("红果 App 接口未返回有效数据");
+  throw lastError || failure(emptyResponseHint, { emptyResponse: true });
 }
 
 function fetchSiteText(address, noCache) {
@@ -2261,6 +2267,10 @@ function resolveVideoMedia(task) {
   try {
     return appMedia(videoId);
   } catch (error) {
+    if (error.emptyResponse) {
+      // 接口整体没有数据（多半是出口被拦），网页那边也没有播放地址，别再拼一长串
+      throw error;
+    }
     nativeError = error;
   }
   try {
