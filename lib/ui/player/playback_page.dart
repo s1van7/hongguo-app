@@ -18,9 +18,22 @@ import 'television_player_page.dart';
 import 'window_fullscreen.dart';
 
 class PlaybackPage extends StatefulWidget {
-  const PlaybackPage({super.key, required this.store, required this.handle});
+  const PlaybackPage({
+    super.key,
+    required this.store,
+    required this.handle,
+    this.fullscreen = false,
+    this.wideHint,
+  });
   final LocalStore store;
   final PlaybackHandle handle;
+
+  /// 从首页“全屏”按钮进来时为 true：手机端直接把横屏视频锁横屏 + 沉浸式，
+  /// 一进来就是全屏放当前这一集，不用再点一次全屏。
+  final bool fullscreen;
+
+  /// 首页那边已经知道画面是横是竖时先带过来，省掉一帧“竖屏页面再转横屏”的闪动。
+  final bool? wideHint;
 
   @override
   State<PlaybackPage> createState() => _PlaybackPageState();
@@ -31,7 +44,9 @@ class _PlaybackPageState extends State<PlaybackPage> {
   bool _windowFullscreen = false;
   final _pageScope = FocusScopeNode(debugLabel: 'playbackPage');
   final _pip = PictureInPicture.instance;
-  late bool _wideVideo = _measure();
+  late bool _wideVideo = (widget.wideHint ?? false) || _measure();
+  bool _phoneFullscreen = false;
+  FormFactor? _form;
   MediaQueryData? _media;
   bool _shown = false;
   Player? _bound;
@@ -52,7 +67,17 @@ class _PlaybackPageState extends State<PlaybackPage> {
     _pip.addListener(_pipChanged);
     _pip.onAction = _action;
     _bind();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sync();
+      _enterPhoneFullscreen();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _form = AppScope.formFactorOf(context);
+    _enterPhoneFullscreen();
   }
 
   @override
@@ -65,6 +90,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
     unawaited(_playing?.cancel());
     _pageScope.dispose();
     if (_padFullscreen.value) _applyPadFullscreen(false);
+    if (_phoneFullscreen) unawaited(AppDevice.releaseOrientation());
     _padFullscreen.dispose();
     unawaited(AppDevice.resetBrightness());
     widget.handle.dispose();
@@ -74,8 +100,29 @@ class _PlaybackPageState extends State<PlaybackPage> {
   void _changed() {
     _bind();
     _sync();
+    // 比例还没测出来时先沿用上一次的判断，别让首页带过来的横屏判断被抹掉
+    if (!_session.aspectKnown) return;
     final wide = _measure();
-    if (wide != _wideVideo) setState(() => _wideVideo = wide);
+    if (wide != _wideVideo) {
+      setState(() => _wideVideo = wide);
+      _enterPhoneFullscreen();
+    }
+  }
+
+  /// 手机端从首页点“全屏”进来：横屏视频一进来就锁横屏 + 沉浸式，直接全屏
+  /// 放当前这一集；竖屏视频本来就是铺满的，不用额外处理。
+  void _enterPhoneFullscreen() {
+    if (_phoneFullscreen || !widget.fullscreen) return;
+    if (_form != FormFactor.phone || !_wideVideo) return;
+    _phoneFullscreen = true;
+    unawaited(
+      AppDevice.setPlayerOrientation(PlayerOrientation.lockedLandscape),
+    );
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.immersiveSticky,
+      ).catchError((Object _) {}),
+    );
   }
 
   void _bind() {
@@ -259,12 +306,15 @@ class _PlaybackPageState extends State<PlaybackPage> {
       FormFactor.pad || FormFactor.window => _padPage(context, mini),
       FormFactor.phone
           when _wideVideo &&
-              !(portraitStyle &&
-                  MediaQuery.orientationOf(context) == Orientation.portrait) =>
+              (_phoneFullscreen ||
+                  !(portraitStyle &&
+                      MediaQuery.orientationOf(context) ==
+                          Orientation.portrait)) =>
         LandscapePlayerPage(
           store: widget.store,
           handle: widget.handle,
-          followSensor: !portraitStyle,
+          // 点“全屏”进来已经锁好横屏了，别再跟着传感器转回竖屏
+          followSensor: !_phoneFullscreen && !portraitStyle,
           onMiniWindow: mini,
         ),
       FormFactor.phone => PortraitPlayerPage(

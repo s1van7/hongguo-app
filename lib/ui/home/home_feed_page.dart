@@ -547,7 +547,13 @@ class HomeFeedPageState extends State<HomeFeedPage>
     );
     await openPage<void>(
       context,
-      (_) => PlaybackPage(store: widget.store, handle: fullHandle),
+      (_) => PlaybackPage(
+        store: widget.store,
+        handle: fullHandle,
+        // 首页点“全屏”/“观看完整短剧”：手机端直接全屏播当前这一集
+        fullscreen: true,
+        wideHint: cur?.aspectKnown == true ? cur!.aspectRatio >= 1 : null,
+      ),
     );
     if (mounted) _scheduleActivate(_currentIndex, immediate: true);
   }
@@ -1279,7 +1285,7 @@ class _FeedSlideState extends State<_FeedSlide> {
                           const SizedBox(width: 8),
                           FeedDockRail(
                             railMax: railMax,
-                            child: _rail(session, total, turns),
+                            child: _rail(session, turns),
                           ),
                         ],
                       ),
@@ -1360,7 +1366,7 @@ class _FeedSlideState extends State<_FeedSlide> {
   }
 
   /// 右侧功能栏。turns 为假时不放上下翻页，窗口矮的时候能省下两格。
-  Widget _rail(PlaybackSession? session, int total, bool turns) {
+  Widget _rail(PlaybackSession? session, bool turns) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       spacing: 14,
@@ -1387,7 +1393,8 @@ class _FeedSlideState extends State<_FeedSlide> {
         ),
         _RailBtn(
           icon: Icons.format_list_numbered_rounded,
-          label: total > 0 ? '选集·$total' : '选集',
+          // 按钮上只留“选集”，总集数放在下面的观看条里，窄栏里也更好读
+          label: '选集',
           onTap: widget.onEpisodes,
         ),
         _RailBtn(
