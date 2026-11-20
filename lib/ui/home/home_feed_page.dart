@@ -1245,191 +1245,241 @@ class _FeedSlideState extends State<_FeedSlide> {
               child: Text('重试：$err', maxLines: 1),
             ),
           ),
-        // 右侧功能栏：整体上移，给底部条腾位置；窗口矮时等比缩小
-        Positioned(
-          right: 10,
-          width: 76,
-          top: 64 + _captionInset + MediaQuery.paddingOf(context).top,
-          bottom: 124 + MediaQuery.paddingOf(context).bottom,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 14,
-              children: [
-                Column(
-                  children: [
-                    FollowIcon(
-                      store: widget.store,
-                      drama: widget.drama,
-                      color: Colors.white,
-                      activeColor: const Color(0xFFFF3B5C),
-                      size: 28,
-                      extent: 44,
-                    ),
-                    const Text(
-                      '追剧',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
-                        shadows: _RailBtn._shadow,
-                      ),
-                    ),
-                  ],
-                ),
-                _RailBtn(
-                  icon: Icons.format_list_numbered_rounded,
-                  label: total > 0 ? '选集·$total' : '选集',
-                  onTap: widget.onEpisodes,
-                ),
-                _RailBtn(
-                  icon: Icons.speed_rounded,
-                  label: session == null
-                      ? '倍速'
-                      : '${_speedText(session.speed)}x',
-                  onTap: session == null
-                      ? null
-                      : () => unawaited(_pickSpeed(session)),
-                ),
-                _RailBtn(
-                  icon: Icons.fullscreen_rounded,
-                  label: '全屏',
-                  onTap: widget.onFullPlayer,
-                ),
-                _RailBtn(
-                  icon: widget.muted
-                      ? Icons.volume_off_rounded
-                      : Icons.volume_up_rounded,
-                  label: widget.muted ? '静音' : '声音',
-                  onTap: widget.onToggleMute,
-                ),
-                // 桌面端没有触摸：上下翻页按钮和上面几个长得一样
-                if (_desktop)
-                  _RailBtn(
-                    icon: Icons.keyboard_arrow_up_rounded,
-                    label: '上一个',
-                    onTap: widget.onPrevious,
-                  ),
-                if (_desktop)
-                  _RailBtn(
-                    icon: Icons.keyboard_arrow_down_rounded,
-                    label: '下一个',
-                    onTap: widget.onNext,
-                  ),
-              ],
+        // 底部信息区：简介和功能栏各占一列，同一条底线对齐，功能栏再也不会压到
+        // 简介文字上；窗口矮的时候功能栏等比缩小，矮到放不下就先收起上下翻页。
+        Positioned.fill(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              12 + _railInsetOf(context),
+              0,
+              12,
+              6 + MediaQuery.paddingOf(context).bottom,
             ),
-          ),
-        ),
-        Positioned(
-          left: 14 + _railInsetOf(context),
-          right: 14,
-          bottom: 56 + MediaQuery.paddingOf(context).bottom,
-          child: ConstrainedBox(
-            // 宽屏不要把整条拉满，手机上自动占满可用宽度
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              spacing: 8,
-              children: [
-                GestureDetector(
-                  onTap: widget.onDetail,
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final safe = MediaQuery.paddingOf(context);
+                // 顶部导航条 56、底部观看按钮 + 进度条 92，功能栏只能用中间这段高度
+                var railMax =
+                    box.maxHeight - 56 - _captionInset - safe.top - 92;
+                if (railMax < 96) railMax = 96;
+                if (railMax > 620) railMax = 620;
+                // 上下翻页只有桌面端有，窗口矮时它们最先让位（方向键和滚轮还在）
+                final turns = _desktop && railMax >= 330;
+                return Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        widget.drama.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        '第$epNum集',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
-                      ),
-                      if (widget.drama.vip) const VipBadge(),
-                    ],
-                  ),
-                ),
-                if (widget.drama.description.trim().isNotEmpty)
-                  GestureDetector(
-                    onTap: () => setState(() => _expanded = !_expanded),
-                    child: Text(
-                      widget.drama.description.trim(),
-                      maxLines: _expanded ? 5 : 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                Material(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: widget.onFullPlayer,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Icon(
-                            Icons.play_circle_fill_rounded,
-                            color: Color(0xFFFF4D4F),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              total > 0
-                                  ? '观看完整短剧 · 共 $total 集'
-                                  : '观看完整短剧 · 选集连播',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: ConstrainedBox(
+                                // 超宽屏不要把简介拉成一整行长条
+                                constraints: const BoxConstraints(maxWidth: 720),
+                                child: _caption(epNum),
                               ),
                             ),
                           ),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white70,
-                            size: 18,
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 74,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: railMax),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.bottomCenter,
+                                child: _rail(session, total, turns),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      _watchBar(total),
+                      const SizedBox(height: 2),
+                      // 进度条：整条铺满，点哪儿跳哪儿，也能拖着走
+                      _FeedProgress(
+                        player: session?.player,
+                        session: session,
+                        loading: widget.resolving || (session?.loading ?? true),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ),
-        // 进度条：整条铺满，点哪儿跳哪儿，也能拖着走，悬停/拖动时上方冒时间
-        Positioned(
-          left: 14 + _railInsetOf(context),
-          right: 14,
-          bottom: 8 + MediaQuery.paddingOf(context).bottom,
-          child: _FeedProgress(
-            player: session?.player,
-            session: session,
-            loading: widget.resolving || (session?.loading ?? true),
+      ],
+    );
+  }
+
+  /// 简介：标题、集数、简介文字，点标题进详情，点简介展开/收起。
+  Widget _caption(int epNum) {
+    final description = widget.drama.description.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
+      children: [
+        GestureDetector(
+          onTap: widget.onDetail,
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(
+                widget.drama.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  shadows: _RailBtn._shadow,
+                ),
+              ),
+              Text(
+                '第$epNum集',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  shadows: _RailBtn._shadow,
+                ),
+              ),
+              if (widget.drama.vip) const VipBadge(),
+            ],
           ),
         ),
+        if (description.isNotEmpty)
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Text(
+              description,
+              maxLines: _expanded ? 5 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.35,
+                shadows: _RailBtn._shadow,
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  /// 右侧功能栏。turns 为假时不放上下翻页，窗口矮的时候能省下两格。
+  Widget _rail(PlaybackSession? session, int total, bool turns) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 14,
+      children: [
+        Column(
+          children: [
+            FollowIcon(
+              store: widget.store,
+              drama: widget.drama,
+              color: Colors.white,
+              activeColor: const Color(0xFFFF3B5C),
+              size: 28,
+              extent: 44,
+            ),
+            const Text(
+              '追剧',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11.5,
+                shadows: _RailBtn._shadow,
+              ),
+            ),
+          ],
+        ),
+        _RailBtn(
+          icon: Icons.format_list_numbered_rounded,
+          label: total > 0 ? '选集·$total' : '选集',
+          onTap: widget.onEpisodes,
+        ),
+        _RailBtn(
+          icon: Icons.speed_rounded,
+          label: session == null ? '倍速' : '${_speedText(session.speed)}x',
+          onTap: session == null
+              ? null
+              : () => unawaited(_pickSpeed(session)),
+        ),
+        _RailBtn(
+          icon: Icons.fullscreen_rounded,
+          label: '全屏',
+          onTap: widget.onFullPlayer,
+        ),
+        _RailBtn(
+          icon: widget.muted
+              ? Icons.volume_off_rounded
+              : Icons.volume_up_rounded,
+          label: widget.muted ? '静音' : '声音',
+          onTap: widget.onToggleMute,
+        ),
+        // 桌面端没有触摸：上下翻页按钮和上面几个长得一样
+        if (turns)
+          _RailBtn(
+            icon: Icons.keyboard_arrow_up_rounded,
+            label: '上一个',
+            onTap: widget.onPrevious,
+          ),
+        if (turns)
+          _RailBtn(
+            icon: Icons.keyboard_arrow_down_rounded,
+            label: '下一个',
+            onTap: widget.onNext,
+          ),
+      ],
+    );
+  }
+
+  /// 观看完整短剧：整条铺满，是进播放页的主入口。
+  Widget _watchBar(int total) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: widget.onFullPlayer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.play_circle_fill_rounded,
+                color: Color(0xFFFF4D4F),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  total > 0 ? '观看完整短剧 · 共 $total 集' : '观看完整短剧 · 选集连播',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white70,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
